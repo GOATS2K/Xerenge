@@ -154,6 +154,7 @@ else
     export LD_LIBRARY_PATH="$dir/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     logs="${XDG_STATE_HOME:-$HOME/.local/state}/xerenge-burnout"
 fi
+[ -n "$(value log_path)" ] && logs=$(value log_path)
 mkdir -p "$logs"
 
 # Started from a shortcut there is no terminal to show why a start failed
@@ -253,6 +254,7 @@ if /i "%debug_noisy%"=="true" set "extra=%extra% --log_noisy=true"
 :debug_done
 
 set "logs=%LOCALAPPDATA%\xerenge-burnout"
+if defined log_path set "logs=%log_path%"
 if not exist "%logs%" mkdir "%logs%"
 
 cd /d "%dir%"
@@ -489,6 +491,27 @@ InstallerWindow::InstallerWindow(QWidget* parent) : QWidget(parent) {
   debug_box_->setToolTip(tr("Detailed logs, for reporting a problem. What is logged is set by the "
                             "debug_* lines in xerenge.conf."));
   layout->addWidget(debug_box_);
+
+  // Where the launcher writes burnout.log and launcher.log; empty keeps the
+  // platform default (SETUP.md has it per platform).
+  auto* log_path_row = new QHBoxLayout;
+  log_path_row->addWidget(new QLabel(tr("Log folder")));
+  log_path_edit_ = new QLineEdit;
+  log_path_edit_->setPlaceholderText(tr("default location"));
+  log_path_edit_->setToolTip(tr("Where burnout.log and launcher.log are written. Leave empty for "
+                                "the default location (see SETUP.md)."));
+  auto* log_path_browse = new QToolButton;
+  log_path_browse->setText("...");
+  connect(log_path_browse, &QToolButton::clicked, this, [this] {
+    const QString path = QFileDialog::getExistingDirectory(this, tr("Log folder"),
+                                                            log_path_edit_->text());
+    if (!path.isEmpty()) {
+      log_path_edit_->setText(path);
+    }
+  });
+  log_path_row->addWidget(log_path_edit_, 1);
+  log_path_row->addWidget(log_path_browse);
+  layout->addLayout(log_path_row);
 
   // The game asks for its language at every start unless one is set here.
   auto* language_row = new QHBoxLayout;
@@ -864,6 +887,9 @@ void InstallerWindow::LoadSettings(const QString& path) {
   flag("windowed", windowed_box_);
   flag("aspect_16_9", aspect_box_);
   flag("debug", debug_box_);
+  if (values.contains("log_path")) {
+    log_path_edit_->setText(values.value("log_path"));
+  }
   choice("language", language_combo_);
   if (values.contains("gamertag")) {
     gamertag_edit_->setText(values.value("gamertag"));
@@ -1000,8 +1026,11 @@ void InstallerWindow::StartInstall() {
       out << setting << " = " << edit->text().trimmed() << "\n";
     }
     out << "# Debug mode: detailed logs for reporting a problem. They go to\n"
-        << "# ~/.local/state/xerenge-burnout (Linux) or %LOCALAPPDATA%\\xerenge-burnout (Windows).\n"
+        << "# ~/.local/state/xerenge-burnout (Linux) or %LOCALAPPDATA%\\xerenge-burnout (Windows)\n"
+        << "# unless log_path below names a folder of its own.\n"
         << "debug = " << (debug_box_->isChecked() ? "true" : "false") << "\n"
+        << "# Where burnout.log and launcher.log are written (empty: the default above)\n"
+        << "log_path = " << log_path_edit_->text().trimmed() << "\n"
         << "# What debug mode logs. Edited here only; an update keeps these lines.\n"
         << "#   debug_log_level: trace, debug, info, warn, error\n"
         << "#   debug_gpu_trace: the renderer's per-draw and per-frame diagnostics (large)\n"

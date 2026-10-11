@@ -13,6 +13,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      job:
+        description: Run only this job (a manual dispatch only; a push always builds everything)
+        type: choice
+        options: [all, linux-amd64, win-amd64, android-arm64, macos-arm64, macos-x86_64, lobby-server]
+        default: all
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ concurrency:
 
 jobs:
   linux-amd64:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'linux-amd64'
     runs-on: ubuntu-24.04
     env:
       CC: clang
@@ -145,6 +152,7 @@ jobs:
   # The same scripts, run by Git for Windows' bash; scripts/platform.sh picks
   # the win-amd64 preset and the .exe names.
   win-amd64:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'win-amd64'
     runs-on: windows-latest
     defaults:
       run:
@@ -274,6 +282,7 @@ jobs:
   # without it a key made for this run signs it, and an installed copy has to be
   # removed first.
   android-arm64:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'android-arm64'
     runs-on: ubuntu-24.04
     env:
       CC: clang
@@ -401,6 +410,7 @@ jobs:
   # tools and Qt for the installer, no Vulkan or windowing packages. See
   # macos-x86_64 below for Intel.
   macos-arm64:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'macos-arm64'
     # macos-14's default Xcode is 15.x (AppleClang 15); the SDK needs AppleClang
     # 16+ (Xcode 16+) for C++23. macos-15 defaults to a new enough Xcode.
     runs-on: macos-15
@@ -500,6 +510,7 @@ jobs:
   # Apple's, so Homebrew's own LLVM stands in - the same trick linux-amd64
   # uses with its own clang-20 instead of Ubuntu's default.
   macos-x86_64:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'macos-x86_64'
     runs-on: macos-13
     env:
       CC: clang
@@ -600,6 +611,7 @@ jobs:
   # neither the private build inputs nor the game. One artifact carries the
   # Linux and the Windows build.
   lobby-server:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'lobby-server'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6

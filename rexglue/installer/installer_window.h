@@ -84,6 +84,8 @@ class InstallerWindow : public QWidget {
   QCheckBox* aspect_box_ = nullptr;
   // Debug mode: the launcher logs what the debug_* lines of xerenge.conf ask.
   QCheckBox* debug_box_ = nullptr;
+  // Where the launcher writes its logs; empty keeps the platform default.
+  QLineEdit* log_path_edit_ = nullptr;
   // Those lines as an installed copy had them, kept through an update.
   QString preserved_debug_settings_;
   QCheckBox* async_box_ = nullptr;
