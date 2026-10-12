@@ -18,6 +18,8 @@ build-relfix/
 *_shader_cache*.cpp
 !tools/cxx/
 *.hlsl
+# ...but not SMAA's reference shader, which is source (smaa.frag includes it)
+!rexglue/thirdparty/smaa/SMAA.hlsl
 *.dxil
 *.spv
 
