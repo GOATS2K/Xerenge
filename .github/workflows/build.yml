@@ -703,17 +703,21 @@ jobs:
 
           Run the installer again over an installed copy to update it; your settings are kept.
 
-          **Android** (arm64, a Vulkan 1.1 GPU - Adreno or Mali): install `Burnout_Revenge-android-arm64.apk`. It opens as the installer: pick your disc image. A Mesa Turnip driver .zip is optional, for Adreno phones whose own driver misbehaves.
+          **Android** (arm64, Adreno or Mali): install `Burnout_Revenge-android-arm64.apk`. It opens as the installer: pick your disc image. A Mesa Turnip driver .zip is optional, for Adreno phones whose own driver misbehaves. This release is signed with a fixed key: uninstall an earlier build once, and later ones install over it, keeping your saves.
 
           **macOS** (Apple silicon): download `Burnout_Revenge_Installer-macos-arm64.zip`, unzip it and run the app inside. It puts `Burnout Revenge.app` in `~/Applications`, so the game starts from Launchpad or Spotlight. The app is signed ad hoc, so macOS stops it the first time it is opened after a download; allow it under System Settings, Privacy & Security, Open Anyway. The installed game logs to `~/Library/Logs/xerenge-burnout/`. An Intel build is on the way, held up only by a long CI queue for that runner - it'll follow in a later release.
 
           **Online play works out of the box** - the installer already points at a shared lobby server (`94639.snk.wtf`), so you do not need to run your own. **Your own online server, if you want one instead:** `ealobby-linux-amd64` or `ealobby-win-amd64.exe` is a lobby server for the online mode. Run it on a machine whose TCP ports 31860 and 31861 the players can reach, and point the installer's "Server address" field at it (or start the game with `--lobby-server=<that machine>`).
 
-          What is new since 0.4.0:
-          - **macOS**, Apple silicon for now (Intel to follow): the SDK builds its own Vulkan loader and MoltenVK (via plume's new SDL/Vulkan-on-Metal path) and stages them next to the game, so the installer app needs nothing but your disc image.
-          - The installer's render resolution can be any WIDTHxHEIGHT now, not just the fixed presets.
-          - Online multiplayer fixes: a missing lobby cvar that could fail the build, and a crash from a malformed `IDENT` field are both fixed; a texture-slot regression that stretched some textures into black triangles is reverted.
-          - CI is considerably faster: the SDK and the plume/XenosRecomp forks are cached by commit instead of being cloned and rebuilt on every run.
+          **0.4.6 is an emergency hotfix for Android** (GitHub #4: a black screen or a hang right after loading on many phones):
+          - Phones with a Linux kernel older than 4.17 (most Android 10 and older devices: Snapdragon 845/660, Helio G80, Kirin 960...) crashed while starting the game: guest memory was mapped at the wrong address. Fixed in the SDK.
+          - ARMv8.0 CPUs (Snapdragon 660, Kirin 960: Cortex-A73/A53) stopped at start with an illegal instruction; the APK is now built for ARMv8.0, with atomics chosen at run time.
+          - Adreno 5xx (Redmi Note 7 and the like): textures came out as black and grey slabs and cars were invisible - BC textures are re-encoded as ETC2 where the GPU lacks them, and its broken depth clamp is avoided. A new hack, "Textures as ETC2", forces the re-encoding on any GPU.
+          - Vertex inputs fit the 16 a Mali-G71 takes (its GPU hung at the first frame).
+          - **Vulkan 1.0 drivers** (old Mali) can now start the game, but this is not fully tested yet: a Mali-G71 still shows a black screen.
+          - An unhandled crash no longer spins and fills the log with one line; it is logged once, with where it happened.
+          - The installer has a log folder, chosen like the disc image: the logs are copied there, since the app's own folder cannot be opened from a file manager.
+          - On-screen controls: a layout editor (drag and resize every button, the stick and the menu button; Done saves it, Reset restores it) and Xbox View/Menu glyphs for Back and Start, from PredatorWoah's XerengePlus fork.
 
           EOF
           gh release create "v$VERSION" --title "$VERSION" --latest --target "$GITHUB_SHA" \
