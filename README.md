@@ -118,11 +118,15 @@ Textures are loaded with their full mip chains from the title's memory, and
 sampled with the filtering and anisotropy the title asks for.
 
 The frame can be anti-aliased and sharpened as it is presented
-(`plume_postfx.cpp`): FXAA, after NVIDIA's FXAA 3.11, and AMD's FidelityFX CAS,
-two full-screen passes from the scene target through a pair of intermediate
-targets, then the usual copy onto the window. Both are off by default - the
-console had neither, and with them off nothing is recorded. The settings are
-live (`SetAntiAliasing`, `SetSharpening`, read once a frame); `XERENGE_AA` and
+(`plume_postfx.cpp`): FXAA, after NVIDIA's FXAA 3.11, or SMAA 1x, and AMD's
+FidelityFX CAS, full-screen passes from the scene target through intermediate
+targets, then the usual copy onto the window. SMAA is the reference
+implementation of Jimenez, Echevarria, Masia, Navarro and Gutierrez (MIT
+licence, `rexglue/thirdparty/smaa`) at its HIGH preset, with edges found from
+luma: three passes - edges, blending weights from its two lookup tables, the
+blend - where FXAA is one. All are off by default - the console had none of
+them, and with them off nothing is recorded. The settings are live
+(`SetAntiAliasing`, `SetSharpening`, read once a frame); `XERENGE_AA` and
 `XERENGE_SHARPEN` set where they start.
 
 The frame is drawn at the window's resolution rather than the console's 720p,

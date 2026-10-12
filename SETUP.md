@@ -261,6 +261,7 @@ Early submit is on unless turned off; the others are off unless asked for.
                                         onto the window
 ./run.sh --colour-grade=0.5             keep half of the title's colour grading
 ./run.sh --aa=fxaa                      anti-alias the finished frame (FXAA)
+./run.sh --aa=smaa                      the same with SMAA 1x
 ./run.sh --sharpen=0.5                  sharpen the finished frame (CAS), 0 to 1
 ./run.sh --brightness=1.2               a gamma on the 3D picture (0.7 to 1.6)
 ./run.sh --shadow-lift=0.1              raise the darkest colours (0 to 0.3)
@@ -316,6 +317,16 @@ Early submit is on unless turned off; the others are off unless asked for.
   FXAA and 0.2 ms for CAS (2560x1440: 0.3 ms each - mostly the pass's fixed
   cost); on a Steam Deck, estimated at 0.2-0.35 ms and 0.15-0.25 ms. They need
   the scene target, which `--plume` turns on.
+* `--aa=smaa` - SMAA 1x in FXAA's place: the reference implementation at its
+  HIGH preset, three passes (the frame's edges, how far each is to be blended,
+  the blend) and two more targets of the frame's size where FXAA is one pass.
+  It follows an edge to both its ends and blends by how much of the pixel the
+  line covers, so long edges come out smooth, and what is not an edge is not
+  touched at all: of a still 1920x1080 frame of a race's introduction it
+  changed 1.6% of the pixels where FXAA changed 12%, and text and textures
+  stay nearly as sharp as with neither. It costs more than FXAA - three
+  passes, the second walking along every edge; by how much is not measured
+  yet.
 * `--async-present` - normally the frame is handed to the GPU and the title
   waits for the GPU to finish it before it goes on. With this it goes on at
   once and the wait moves to the start of the next frame, so the title's own

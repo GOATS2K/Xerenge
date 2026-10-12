@@ -64,6 +64,8 @@
 #                       cast) plume keeps, 0 to 1; 1 is the console's look.
 #   ./run.sh --aa=fxaa  anti-aliasing (plume): FXAA over the finished frame, at
 #                       the size it is drawn at. Off by default, as on the console.
+#   ./run.sh --aa=smaa  the same with SMAA 1x: three passes for FXAA's one, and
+#                       a picture it softens less.
 #   ./run.sh --sharpen=AMOUNT
 #                       sharpening (plume): AMD's contrast adaptive sharpening
 #                       over the finished frame, 0 (off, the default) to 1.
