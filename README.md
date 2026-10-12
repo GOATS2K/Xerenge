@@ -117,6 +117,15 @@ the same moment.
 Textures are loaded with their full mip chains from the title's memory, and
 sampled with the filtering and anisotropy the title asks for.
 
+The frame is drawn at the window's resolution rather than the console's 720p,
+and the copies of it the post-processing reads are kept at that size. A pass
+that shrinks a copy further - the bloom's first step, 1280x720 into 320x180 -
+samples it with offsets made for 720p, and at a higher resolution it would
+catch a different few pixels of each block every frame: small highlights
+flickered through the glare and the whole picture shimmered. Such a copy is
+filtered down to its guest size first (halved while a half covers it, then
+the last step), at any window size and shape.
+
 Open:
 
 * The Wayland surface extension is offered by the loader but never enabled, so
