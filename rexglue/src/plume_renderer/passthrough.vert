@@ -2,8 +2,8 @@
 
 layout(location = 0) in vec4 in_pos;
 layout(location = 1) in vec4 in_texid;
-layout(location = 13) in vec4 in_uv;
-layout(location = 17) in vec4 in_color;
+layout(location = 2) in vec4 in_uv;     // the staged vertex's location 13 (see ScreenPipelineFor)
+layout(location = 3) in vec4 in_color;  // and its 17: below 16, a Mali-G71's limit
 
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_uv;

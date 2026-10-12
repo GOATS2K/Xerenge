@@ -2764,10 +2764,19 @@ plume::RenderPipeline* PlumeDrawContext::ScreenPipelineFor(
     desc.renderTargetFormat[1] = kColorTargetFormat;
     desc.renderTargetBlend[1] = BlendDescFromGuest(0x00010001u, 0);
   }
+  // The four locations passthrough.vert and video.vert read: position, texture
+  // id, uv and colour - the staged vertex's 0, 1, 13 and 17, taken in as 0-3. All
+  // twenty were declared before, and a Mali-G71 takes sixteen at most.
+  static const std::array<plume::RenderInputElement, 4> screen_elements = {
+      plume::RenderInputElement("TEXCOORD", 0, 0, plume::RenderFormat::R32G32B32A32_FLOAT, 0, 0 * 16),
+      plume::RenderInputElement("TEXCOORD", 1, 1, plume::RenderFormat::R32G32B32A32_FLOAT, 0, 1 * 16),
+      plume::RenderInputElement("TEXCOORD", 2, 2, plume::RenderFormat::R32G32B32A32_FLOAT, 0, 13 * 16),
+      plume::RenderInputElement("TEXCOORD", 3, 3, plume::RenderFormat::R32G32B32A32_FLOAT, 0, 17 * 16),
+  };
   desc.inputSlots = &input_slots_[0];
   desc.inputSlotsCount = 1;
-  desc.inputElements = input_elements_.data();
-  desc.inputElementsCount = kInputLocationCount;
+  desc.inputElements = screen_elements.data();
+  desc.inputElementsCount = uint32_t(screen_elements.size());
 
   auto pipeline = device_->createGraphicsPipeline(desc);
   if (!pipeline || !VulkanPipelineOk(pipeline.get())) {
@@ -3148,19 +3157,27 @@ plume::RenderPipeline* PlumeDrawContext::GetOrCreatePipeline(
     desc.renderTargetBlend[1] = BlendDescFromGuest(
         0x00010001u, PixelShaderWritesOc1(ps_hash) ? WriteMaskForRt0(color_mask >> 4) : 0);
   }
-  // Only the locations this vertex shader declares, packed in order.
+  // Only the locations this vertex shader declares, packed in order. Each is
+  // taken in at its rank, not its number: the shader cache numbers a vertex
+  // shader's inputs 0, 1, 2... (CompactInputLocations), since the title's go up
+  // to 17 and a Mali-G71 takes locations below 16 only. With the full layout
+  // (XERENGE_FULL_VERTICES) each still reads its own place in the 20.
   const uint32_t layout = TitleVertexLayout(vs_hash);
+  const bool full_layout = layout == kFullLayoutMask;
+  const uint32_t declared = PlumeShaderCache::Instance().InputLocationMask(vs_hash) & kFullLayoutMask;
   std::array<plume::RenderInputElement, kInputLocationCount> elements{};
   uint32_t element_count = 0;
   for (uint32_t loc = 0; loc < kInputLocationCount; ++loc) {
-    if ((layout >> loc) & 1u) {
+    if ((declared >> loc) & 1u) {
       elements[element_count] = plume::RenderInputElement(
-          "TEXCOORD", loc, loc, plume::RenderFormat::R32G32B32A32_FLOAT, 0, element_count * 16);
+          "TEXCOORD", element_count, element_count, plume::RenderFormat::R32G32B32A32_FLOAT, 0,
+          (full_layout ? loc : element_count) * 16);
       ++element_count;
     }
   }
   const plume::RenderInputSlot slot(
-      0, std::max(element_count, 1u) * 16, plume::RenderInputSlotClassification::PER_VERTEX_DATA);
+      0, full_layout ? kVertexStrideBytes : std::max(element_count, 1u) * 16,
+      plume::RenderInputSlotClassification::PER_VERTEX_DATA);
   desc.inputSlots = &slot;
   desc.inputSlotsCount = 1;
   desc.inputElements = elements.data();

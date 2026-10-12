@@ -491,6 +491,56 @@ static bool Listed(const std::vector<uint64_t>& listed, uint64_t hash) {
   });
 }
 
+// A vertex shader's inputs numbered 0, 1, 2... in the order of their
+// locations: the title's go as high as 17, a Mali-G71 takes locations below 16
+// only (maxVertexInputAttributes), and its GPU hung at the first frame. The
+// pipeline takes each input at its rank (GetOrCreatePipeline); the location
+// mask (InputLocationMask) is still read from the shader as translated.
+// Returns false when there is nothing to change.
+static bool CompactInputLocations(const uint32_t* words, size_t count, std::vector<uint32_t>* out) {
+  constexpr uint32_t kOpEntryPoint = 15, kOpDecorate = 71, kOpVariable = 59;
+  constexpr uint32_t kDecorationLocation = 30, kStorageClassInput = 1, kExecutionModelVertex = 0;
+  bool vertex = false;
+  std::unordered_map<uint32_t, size_t> location_word;  // id -> index of its location operand
+  std::vector<uint32_t> inputs;
+  for (size_t i = 5; i < count;) {
+    const uint32_t length = words[i] >> 16, op = words[i] & 0xFFFFu;
+    if (length == 0 || i + length > count) {
+      return false;
+    }
+    if (op == kOpEntryPoint && length >= 2) {
+      vertex = vertex || words[i + 1] == kExecutionModelVertex;
+    } else if (op == kOpDecorate && length >= 4 && words[i + 2] == kDecorationLocation) {
+      location_word[words[i + 1]] = i + 3;
+    } else if (op == kOpVariable && length >= 4 && words[i + 3] == kStorageClassInput) {
+      inputs.push_back(words[i + 2]);
+    }
+    i += length;
+  }
+  if (!vertex) {
+    return false;
+  }
+  std::vector<std::pair<uint32_t, size_t>> placed;  // location, word index
+  for (const uint32_t id : inputs) {
+    if (auto at = location_word.find(id); at != location_word.end()) {
+      placed.emplace_back(words[at->second], at->second);
+    }
+  }
+  std::sort(placed.begin(), placed.end());
+  bool changed = false;
+  for (size_t rank = 0; rank < placed.size(); ++rank) {
+    changed = changed || placed[rank].first != rank;
+  }
+  if (!changed) {
+    return false;
+  }
+  out->assign(words, words + count);
+  for (size_t rank = 0; rank < placed.size(); ++rank) {
+    (*out)[placed[rank].second] = uint32_t(rank);
+  }
+  return true;
+}
+
 static bool RedPixelShader(uint64_t hash) {
   static const std::vector<uint64_t> listed = ListedHashes("XERENGE_RED_PS");
   return Listed(listed, hash);
@@ -580,6 +630,12 @@ plume::RenderShader* PlumeShaderCache::GetOrCreateShader(uint64_t hash) {
     words = kSimpleVsSpirv;
     word_count = std::size(kSimpleVsSpirv);
     REXLOG_INFO("plume: vertex shader {:016X} replaced by a position-only one (XERENGE_SIMPLE_VS)", hash);
+  }
+  // Last, so a stand-in (XERENGE_SIMPLE_VS) is numbered the same way.
+  std::vector<uint32_t> compacted;
+  if (CompactInputLocations(words, word_count, &compacted)) {
+    words = compacted.data();
+    word_count = compacted.size();
   }
   std::unique_ptr<plume::RenderShader> shader = device_->createShader(
       words, word_count * sizeof(uint32_t), "shaderMain", plume::RenderShaderFormat::SPIRV);
