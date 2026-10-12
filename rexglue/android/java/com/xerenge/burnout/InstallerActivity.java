@@ -65,6 +65,7 @@ public class InstallerActivity extends Activity {
 
     private static final int PICK_DRIVER = 1;
     private static final int PICK_IMAGE = 2;
+    private static final int PICK_LOG_FOLDER = 3;
     // FEATURE_VULKAN_HARDWARE_VERSION encodes versions like VK_MAKE_VERSION.
     private static final int VULKAN_1_1 = (1 << 22) | (1 << 12);
     // Files the retail image holds, for the extraction's progress.
@@ -94,6 +95,8 @@ public class InstallerActivity extends Activity {
     private Uri imageUri;
     // No "Windowed" or "Xenia render" here: a phone runs full screen, and on plume.
     private CheckBox bloomBox, blurBox, debugBox;
+    private TextView logFolderField;
+    private Button logFolderClear;
     private Spinner languageSpinner;
     private CheckBox asyncBox, earlySubmitBox, packedVerticesBox, cullingBox, reflectionSplitBox, fpsBox, fps30Box,
             frameGenBox, crashInterpBox;
@@ -346,6 +349,26 @@ public class InstallerActivity extends Activity {
         blurBox = check(page, R.string.blur, R.string.blur_tip);
         debugBox = check(page, R.string.debug, R.string.debug_tip);
 
+        // Where the logs are copied to: the app's own folder is out of a file
+        // manager's reach on Android 11 and later (LogExport).
+        LinearLayout logRow = row(page);
+        logFolderField = new TextView(this);
+        logFolderField.setHint(R.string.log_folder_none);
+        logFolderField.setHintTextColor(NOTE);
+        logFolderField.setTextColor(Color.WHITE);
+        logRow.addView(logFolderField, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button logFolderBrowse = new Button(this);
+        logFolderBrowse.setText("...");
+        logFolderBrowse.setOnClickListener(v -> startActivityForResult(
+                new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_LOG_FOLDER));
+        logRow.addView(logFolderBrowse);
+        logFolderClear = new Button(this);
+        logFolderClear.setText("\u00d7");
+        logFolderClear.setOnClickListener(v -> setLogFolder(null));
+        logRow.addView(logFolderClear);
+        note(page, R.string.log_folder_tip);
+        showLogFolder();
+
         // The game asks for its language at every start unless one is set here.
         LinearLayout languageRow = row(page);
         label(languageRow, getString(R.string.language), 15, false, Color.WHITE).setPadding(0, 0, dp(12), 0);
@@ -567,6 +590,38 @@ public class InstallerActivity extends Activity {
         startButton.setEnabled(!busy && ready());
     }
 
+    /** The picked log folder, kept across restarts with a persistable grant; null forgets it. */
+    private void setLogFolder(Uri tree) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        Uri old = LogExport.tree(this);
+        if (old != null && !old.equals(tree)) {
+            try {
+                getContentResolver().releasePersistableUriPermission(old,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ignored) {
+            }
+        }
+        if (tree == null) {
+            prefs.edit().remove(LogExport.PREF_TREE).apply();
+        } else {
+            try {
+                getContentResolver().takePersistableUriPermission(tree,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ignored) {
+            }
+            prefs.edit().putString(LogExport.PREF_TREE, tree.toString()).apply();
+            // What is there already (a run that failed before the folder was picked).
+            LogExport.exportAsync(this);
+        }
+        showLogFolder();
+    }
+
+    private void showLogFolder() {
+        String name = LogExport.folderName(this);
+        logFolderField.setText(name == null ? "" : name);
+        logFolderClear.setVisibility(name == null ? View.GONE : View.VISIBLE);
+    }
+
     private void pick(int request, String type) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -596,6 +651,8 @@ public class InstallerActivity extends Activity {
         } else if (request == PICK_IMAGE) {
             imageUri = data.getData();
             imageField.setText(displayName(imageUri));
+        } else if (request == PICK_LOG_FOLDER) {
+            setLogFolder(data.getData());
         }
     }
 

@@ -14,6 +14,8 @@
     <string name="blur_tip">Motion blur and radial blur.</string>
     <string name="debug">Debug mode</string>
     <string name="debug_tip">Detailed logs, for reporting a problem. What is logged is set by the debug_* lines in xerenge.conf.</string>
+    <string name="log_folder_none">Log folder: not chosen</string>
+    <string name="log_folder_tip">The logs (burnout.log) are copied there when the game starts and whenever it goes to the background - the app\'s own folder cannot be opened from a file manager. Attach them to a bug report.</string>
     <string name="language">Language</string>
     <string name="language_ask">Ask at every start</string>
     <string name="hacks">Hacks</string>

@@ -13,6 +13,8 @@
     <string name="blur_tip">Размытие в движении и радиальное размытие.</string>
     <string name="debug">Режим отладки</string>
     <string name="debug_tip">Подробные логи для сообщения о проблеме. Что пишется в лог, задают строки debug_* в xerenge.conf.</string>
+    <string name="log_folder_none">Папка для логов: не выбрана</string>
+    <string name="log_folder_tip">Логи (burnout.log) копируются туда при запуске игры и каждый раз, когда она уходит в фон: собственную папку приложения не открыть из файлового менеджера. Прикладывайте их к сообщению об ошибке.</string>
     <string name="language">Язык</string>
     <string name="language_ask">Спрашивать при каждом запуске</string>
     <string name="hacks">Хаки</string>

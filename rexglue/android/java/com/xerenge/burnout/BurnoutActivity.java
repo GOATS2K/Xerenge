@@ -19,6 +19,7 @@ import org.libsdl.app.SDLActivity;
  *   user/        saves
  *   xerenge.conf the settings
  *   burnout.log  the log (with .1 and .2 before it)
+ * and copies the logs into a folder the player picked, if any (LogExport).
  */
 public class BurnoutActivity extends SDLActivity {
     private Settings settings;
@@ -29,6 +30,9 @@ public class BurnoutActivity extends SDLActivity {
         // it starts, the renderer when it creates its Vulkan instance.
         settings = Settings.load(this);
         settings.applyEnvironment();
+        // The last run's logs into the player's folder, if one is picked: the
+        // game appends, so a run that crashed or hung is in them (LogExport).
+        LogExport.exportAsync(this);
         String driver = getSharedPreferences(InstallerActivity.PREFS, MODE_PRIVATE)
                 .getString(InstallerActivity.PREF_DRIVER, null);
         try {
@@ -47,6 +51,14 @@ public class BurnoutActivity extends SDLActivity {
                     new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         }
+    }
+
+    // And this run's, whenever it leaves the screen: the moment a player goes
+    // to report something, or swipes a hung game away.
+    @Override
+    protected void onStop() {
+        super.onStop();
+        LogExport.exportAsync(this);
     }
 
     // Always landscape, either way up: SDL would otherwise allow any
