@@ -4792,7 +4792,12 @@ void ClearFirstPass(plume::RenderCommandList* list, const RenderPassBreak* pass,
   list->clearColor(0, plume::RenderColor(pass->clear_color[0], pass->clear_color[1],
                                          pass->clear_color[2], pass->clear_color[3]));
   if (pass->second_target) {
-    list->clearColor(1, plume::RenderColor(0.0f, 0.0f, 0.0f, 0.0f));
+    // "No motion", as the scene writes it (see ResolveRenderTarget's `zero`):
+    // what the sky, which writes no motion of its own, keeps. Cleared to
+    // zeroes it read as a motion of -1 on both axes, and the motion blur
+    // smeared every pole and rope against the sky into a ghost beside it and
+    // a row of dots - the blur's eight taps - even standing still.
+    list->clearColor(1, plume::RenderColor(1.0f, 0.0f, 1.0f, 0.0f));
   }
   if (pass->has_depth) {
     // Far plane, matching the guest's own convention of clearing depth to 1.
