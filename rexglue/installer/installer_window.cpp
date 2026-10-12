@@ -121,6 +121,10 @@ grade=$(value colour_grade)
 [ "$(value aa)" = fxaa ] && export XERENGE_AA=fxaa
 sharpen=$(value sharpen)
 [ -n "$sharpen" ] && export XERENGE_SHARPEN="$sharpen"
+brightness=$(value brightness)
+[ -n "$brightness" ] && export XERENGE_BRIGHTNESS="$brightness"
+shadow_lift=$(value shadow_lift)
+[ -n "$shadow_lift" ] && export XERENGE_SHADOW_LIFT="$shadow_lift"
 [ "$(value fps_counter)" = true ] && export XERENGE_FPS_SHOW=1
 [ "$(value fps_30)" = true ] && export XERENGE_FPS_30=1
 [ "$(value frame_generation)" = true ] && export XERENGE_FRAME_GENERATION=120
@@ -232,6 +236,8 @@ if /i "%anisotropy%"=="off" (set "XERENGE_MAX_ANISOTROPY=1") else if defined ani
 if defined colour_grade set "XERENGE_COLOUR_GRADE=%colour_grade%"
 if /i "%aa%"=="fxaa" set "XERENGE_AA=fxaa"
 if defined sharpen set "XERENGE_SHARPEN=%sharpen%"
+if defined brightness set "XERENGE_BRIGHTNESS=%brightness%"
+if defined shadow_lift set "XERENGE_SHADOW_LIFT=%shadow_lift%"
 if /i "%fps_counter%"=="true" set "XERENGE_FPS_SHOW=1"
 if /i "%fps_30%"=="true" set "XERENGE_FPS_30=1"
 if /i "%frame_generation%"=="true" set "XERENGE_FRAME_GENERATION=120"

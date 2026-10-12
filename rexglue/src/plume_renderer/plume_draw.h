@@ -717,6 +717,8 @@ class PlumeDrawContext {
     size_t staging_size[2] = {0, 0};
     uint32_t index = 0;
     uint64_t content = 0;
+    // The colour settings (settings::ColourTableVersion) it was blended with.
+    uint32_t table_version = 0;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t layers = 0;

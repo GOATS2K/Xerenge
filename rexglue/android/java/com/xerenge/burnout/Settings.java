@@ -308,6 +308,9 @@ final class Settings {
         if ("fxaa".equals(value("aa"))) env("XERENGE_AA", "fxaa");
         if (!value("sharpen").isEmpty()) env("XERENGE_SHARPEN", value("sharpen"));
         if (!"false".equals(value("aspect_16_9"))) env("XERENGE_ASPECT_16_9", "1");
+        if (!value("colour_grade").isEmpty()) env("XERENGE_COLOUR_GRADE", value("colour_grade"));
+        if (!value("brightness").isEmpty()) env("XERENGE_BRIGHTNESS", value("brightness"));
+        if (!value("shadow_lift").isEmpty()) env("XERENGE_SHADOW_LIFT", value("shadow_lift"));
         if ("true".equals(value("fps_counter"))) env("XERENGE_FPS_SHOW", "1");
         if ("true".equals(value("fps_30"))) env("XERENGE_FPS_30", "1");
         if ("true".equals(value("frame_generation"))) env("XERENGE_FRAME_GENERATION", "120");

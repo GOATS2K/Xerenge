@@ -262,6 +262,8 @@ Early submit is on unless turned off; the others are off unless asked for.
 ./run.sh --colour-grade=0.5             keep half of the title's colour grading
 ./run.sh --aa=fxaa                      anti-alias the finished frame (FXAA)
 ./run.sh --sharpen=0.5                  sharpen the finished frame (CAS), 0 to 1
+./run.sh --brightness=1.2               a gamma on the 3D picture (0.7 to 1.6)
+./run.sh --shadow-lift=0.1              raise the darkest colours (0 to 0.3)
 ./run.sh --async-present                let the title start its next frame while
                                         the GPU is still drawing this one
 ./run.sh --no-early-submit              turn early submit (below) off
@@ -294,6 +296,14 @@ Early submit is on unless turned off; the others are off unless asked for.
   which is what gives the picture its yellow-brown cast. plume draws that table
   towards a neutral one as it is loaded: 1 keeps the console's look, 0 shows
   the colours as drawn, anything between mixes the two.
+* `--brightness=GAMMA` (`brightness` in `xerenge.conf`, `XERENGE_BRIGHTNESS`,
+  0.7 to 1.6) and `--shadow-lift=AMOUNT` (`shadow_lift`, `XERENGE_SHADOW_LIFT`,
+  0 to 0.3) - baked into the same colour table, so they work on the 3D picture
+  only, not the interface. Brightness is a gamma on each colour; shadow lift
+  raises the dark end without touching the bright end, which is for the cars
+  that are almost black - as they are on the console. At their defaults, 1 and
+  0, nothing is done and the picture is the console's. The renderer keeps these
+  three in `plume_settings`, where they can also be changed while the game runs.
 * `--aa=fxaa` (`aa` in `xerenge.conf`, `XERENGE_AA`) and `--sharpen=AMOUNT`
   (`sharpen`, `XERENGE_SHARPEN`) - two passes over the finished frame, at the
   size it is drawn at and before it is scaled onto the window: FXAA, which
