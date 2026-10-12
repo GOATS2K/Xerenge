@@ -1035,7 +1035,8 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
   if (!hold && !encode) {
     command_list_->clearColor(0, plume::RenderColor(r, g, b, a));
     if (second_target) {
-      command_list_->clearColor(1, plume::RenderColor(0.0f, 0.0f, 0.0f, 0.0f));
+      // "No motion", as ClearFirstPass clears it.
+      command_list_->clearColor(1, plume::RenderColor(1.0f, 0.0f, 1.0f, 0.0f));
     }
     if (depth_texture_) {
       // Far plane, matching the guest's own convention of clearing depth to 1.

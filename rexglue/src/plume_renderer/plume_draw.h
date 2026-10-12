@@ -16,6 +16,7 @@
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <plume_render_interface.h>
@@ -523,6 +524,10 @@ class PlumeDrawContext {
   // ordinary texture does not count.
   bool ReadsResolvedCopy(const GuestDrawSnapshot& snap, bool this_frame = false) const;
   uint32_t BindlessForSlot(const GuestDrawSnapshot& snap, uint32_t slot) const;
+  // A copy drawn larger than the guest's size, read by a pass into a target
+  // smaller than that size - the bloom's first step, 1280x720 into 320x180:
+  // the copy is wanted at the guest's size as well (ResolvedTarget::shrink_*).
+  void NoteShrinkingReads(const GuestDrawSnapshot& snap);
   void FillSharedConstants(uint8_t* dst, const GuestDrawSnapshot& snap, uint32_t width,
                            uint32_t height) const;
   // Builds the pipelines a scene draw would need, with no title involved.
@@ -590,7 +595,24 @@ class PlumeDrawContext {
     bool cube = false;
     // Filled with zeroes rather than copied (ResolveRenderTarget's `zero`).
     bool zeroed = false;
+    // The guest's size of the copy, when a pass shrinks it further
+    // (NoteShrinkingReads); 0 when none does.
+    uint32_t shrink_width = 0;
+    uint32_t shrink_height = 0;
+    // The copy filtered down to that size (ShrinkResolvedTarget): halved as
+    // long as a half still covers it, then the last step. `shrunk` is the
+    // last of them, bound as `shrunk_bindless`; it is current only when made
+    // from this copy.
+    std::vector<std::unique_ptr<plume::RenderTexture>> shrink_chain;
+    std::vector<std::pair<uint32_t, uint32_t>> shrink_sizes;
+    std::unique_ptr<plume::RenderTextureView> shrunk_view;
+    uint32_t shrunk_bindless = 0;
+    bool shrunk_current = false;
   };
+  // Filters `target` down to its shrink size, after a copy into it.
+  void ShrinkResolvedTarget(plume::RenderCommandList* list, ResolvedTarget& target);
+  // The backend has no blit; copies stay at the size drawn.
+  bool shrink_unsupported_ = false;
   std::unordered_map<uint32_t, ResolvedTarget> resolved_targets_;
   // Zeroes to fill a resolve target from (ResolveRenderTarget's `zero`).
   std::unique_ptr<plume::RenderBuffer> zero_upload_;

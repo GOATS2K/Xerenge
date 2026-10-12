@@ -4792,7 +4792,12 @@ void ClearFirstPass(plume::RenderCommandList* list, const RenderPassBreak* pass,
   list->clearColor(0, plume::RenderColor(pass->clear_color[0], pass->clear_color[1],
                                          pass->clear_color[2], pass->clear_color[3]));
   if (pass->second_target) {
-    list->clearColor(1, plume::RenderColor(0.0f, 0.0f, 0.0f, 0.0f));
+    // "No motion", as the scene writes it (see ResolveRenderTarget's `zero`):
+    // what the sky, which writes no motion of its own, keeps. Cleared to
+    // zeroes it read as a motion of -1 on both axes, and the motion blur
+    // smeared every pole and rope against the sky into a ghost beside it and
+    // a row of dots - the blur's eight taps - even standing still.
+    list->clearColor(1, plume::RenderColor(1.0f, 0.0f, 1.0f, 0.0f));
   }
   if (pass->has_depth) {
     // Far plane, matching the guest's own convention of clearing depth to 1.
@@ -5429,6 +5434,8 @@ void PlumeDrawContext::ResolveRenderTarget(plume::RenderCommandList* list,
     REXLOG_INFO("plume: resolve target {:08X} -> {}x{} native (guest asked {}x{}, bindless {})",
                 dest_base, dest_width, dest_height, guest_width, guest_height, target.bindless);
   }
+  // Whatever was filtered down from the last copy is not this one.
+  target.shrunk_current = false;
 
   if (zero) {
     if (!target.zeroed && !target.cube) {
@@ -5533,7 +5540,113 @@ void PlumeDrawContext::ResolveRenderTarget(plume::RenderCommandList* list,
   } else {
     texture_set_->setTexture(target.bindless, target.texture.get(),
                              plume::RenderTextureLayout::SHADER_READ, target.view.get());
+    if (target.shrink_width != 0 &&
+        (dest_width > target.shrink_width || dest_height > target.shrink_height)) {
+      ShrinkResolvedTarget(list, target);
+    }
   }
+}
+
+// The title's post-processing shrinks a copy of the frame by sampling it a few
+// times per pixel of a smaller target, the offsets made for the copy's guest
+// size: the bloom takes 1280x720 into 320x180, each of its pixels from about
+// 4x4 of the copy's. Drawn at 3840x2160 the copy has 12x12 there, and those
+// few samples catch a different handful of them every frame - every highlight
+// smaller than a few pixels flickered in and out of the glare and the picture
+// shimmered all over. Filtered down to the guest's size first, the pass reads
+// what it reads on the console. Halving is an exact 2x2 average in a linear
+// blit, so the copy is halved, an axis at a time, as long as the half still
+// covers the guest's size; the last step is then less than 2:1, where a linear
+// blit still takes in every pixel. So any size works, any shape of screen.
+void PlumeDrawContext::ShrinkResolvedTarget(plume::RenderCommandList* list,
+                                            ResolvedTarget& target) {
+  if (shrink_unsupported_) {
+    return;
+  }
+  const uint32_t goal_w = target.shrink_width;
+  const uint32_t goal_h = target.shrink_height;
+  std::vector<std::pair<uint32_t, uint32_t>> sizes;
+  uint32_t w = target.width;
+  uint32_t h = target.height;
+  while (w > goal_w || h > goal_h) {
+    const uint32_t half_w = w / 2 >= goal_w ? w / 2 : w;
+    const uint32_t half_h = h / 2 >= goal_h ? h / 2 : h;
+    if (half_w == w && half_h == h) {
+      // Less than 2:1 left on both axes: the last step.
+      w = std::min(w, goal_w);
+      h = std::min(h, goal_h);
+    } else {
+      w = half_w;
+      h = half_h;
+    }
+    sizes.emplace_back(w, h);
+  }
+  if (sizes.empty()) {
+    return;
+  }
+  if (sizes != target.shrink_sizes) {
+    target.shrink_chain.clear();
+    target.shrunk_view.reset();
+    for (const auto& [sw, sh] : sizes) {
+      plume::RenderTextureDesc desc = plume::RenderTextureDesc::Texture2D(sw, sh, 1, kColorTargetFormat);
+      desc.committed = true;
+      auto texture = device_->createTexture(desc);
+      if (!texture) {
+        target.shrink_chain.clear();
+        target.shrink_sizes.clear();
+        return;
+      }
+      target.shrink_chain.push_back(std::move(texture));
+    }
+    target.shrunk_view = target.shrink_chain.back()->createTextureView(
+        plume::RenderTextureViewDesc::Texture2D(kColorTargetFormat));
+    if (!target.shrunk_view) {
+      target.shrink_chain.clear();
+      target.shrink_sizes.clear();
+      return;
+    }
+    if (target.shrunk_bindless == 0) {
+      if (next_bindless_ >= kBindlessTextureCount) {
+        target.shrink_chain.clear();
+        target.shrunk_view.reset();
+        target.shrink_sizes.clear();
+        return;
+      }
+      target.shrunk_bindless = next_bindless_++;
+    }
+    target.shrink_sizes = sizes;
+    REXLOG_INFO("plume: copy {}x{} filtered down to {}x{} in {} steps for the passes that shrink it",
+                target.width, target.height, goal_w, goal_h, sizes.size());
+  }
+
+  plume::RenderTexture* source = target.texture.get();
+  list->barriers(plume::RenderBarrierStage::COPY,
+                 plume::RenderTextureBarrier(source, plume::RenderTextureLayout::COPY_SOURCE));
+  bool blitted = true;
+  for (auto& step : target.shrink_chain) {
+    list->barriers(plume::RenderBarrierStage::COPY,
+                   plume::RenderTextureBarrier(step.get(), plume::RenderTextureLayout::COPY_DEST));
+    if (!list->blitTexture(step.get(), source, true)) {
+      blitted = false;
+      break;
+    }
+    list->barriers(plume::RenderBarrierStage::COPY,
+                   plume::RenderTextureBarrier(step.get(), plume::RenderTextureLayout::COPY_SOURCE));
+    source = step.get();
+  }
+  plume::RenderTexture* const shrunk = target.shrink_chain.back().get();
+  const plume::RenderTextureBarrier readable[2] = {
+      plume::RenderTextureBarrier(target.texture.get(), plume::RenderTextureLayout::SHADER_READ),
+      plume::RenderTextureBarrier(shrunk, plume::RenderTextureLayout::SHADER_READ)};
+  list->barriers(plume::RenderBarrierStage::GRAPHICS, nullptr, 0, readable, 2);
+  if (!blitted) {
+    shrink_unsupported_ = true;
+    REXLOG_WARN("plume: this backend cannot blit; copies are read at the size drawn");
+    return;
+  }
+  texture_set_->setTexture(target.shrunk_bindless, shrunk, plume::RenderTextureLayout::SHADER_READ,
+                           target.shrunk_view.get());
+  target.shrunk_current = true;
 }
 
 bool PlumeDrawContext::ZeroedTargetReady(uint32_t dest_base, uint32_t width, uint32_t height,
@@ -6392,12 +6505,60 @@ bool PlumeDrawContext::ReadsResolvedCopy(const GuestDrawSnapshot& snap,
   return false;
 }
 
+namespace {
+// A draw into a target smaller than the copy it samples, on both axes: a pass
+// that shrinks the picture (the bloom's first step), not the composite.
+bool ShrinksCopy(const GuestDrawSnapshot& snap, const rex::graphics::xenos::xe_gpu_texture_fetch_t& fetch) {
+  return snap.d3d_vertex_buffer != 0 && snap.d3d_target_width != 0 &&
+         snap.d3d_target_height != 0 && snap.d3d_target_width < fetch.size_2d.width + 1u &&
+         snap.d3d_target_height < fetch.size_2d.height + 1u;
+}
+}  // namespace
+
+void PlumeDrawContext::NoteShrinkingReads(const GuestDrawSnapshot& snap) {
+  using rex::graphics::xenos::FetchConstantType;
+  if (snap.d3d_vertex_buffer == 0) {
+    return;
+  }
+  const uint32_t used_slots = UsedTextureSlots(snap);
+  for (uint32_t slot = 0; slot < 16; ++slot) {
+    if ((used_slots & (1u << slot)) == 0) {
+      continue;
+    }
+    const auto fetch = TextureFetchAt(snap, slot);
+    if (fetch.type != FetchConstantType::kTexture || fetch.base_address == 0 ||
+        fetch.dimension == rex::graphics::xenos::DataDimension::kCube || !ShrinksCopy(snap, fetch)) {
+      continue;
+    }
+    auto it = resolved_targets_.find(fetch.base_address << 12);
+    if (it == resolved_targets_.end() || it->second.cube) {
+      continue;
+    }
+    ResolvedTarget& target = it->second;
+    const uint32_t guest_w = fetch.size_2d.width + 1u;
+    const uint32_t guest_h = fetch.size_2d.height + 1u;
+    // Only a copy drawn larger than the guest's: at its size or below
+    // (720p, a phone's) the pass reads it as the console does.
+    if (target.width <= guest_w && target.height <= guest_h) {
+      continue;
+    }
+    // From the next copy on: this one is in use already.
+    target.shrink_width = guest_w;
+    target.shrink_height = guest_h;
+  }
+}
+
 uint32_t PlumeDrawContext::BindlessForSlot(const GuestDrawSnapshot& snap, uint32_t slot) const {
   using rex::graphics::xenos::FetchConstantType;
   const auto fetch = TextureFetchAt(snap, slot);
   if (fetch.type != FetchConstantType::kTexture || fetch.base_address == 0) {
     return 0;
   }
+  // A copy, at the guest's size for a pass that shrinks it (ShrinkResolvedTarget).
+  const auto copy_bindless = [&](const ResolvedTarget& target) {
+    return target.shrunk_current && ShrinksCopy(snap, fetch) ? target.shrunk_bindless
+                                                             : target.bindless;
+  };
   // A real texture always wins. A resolved render target is only a stand-in
   // for an address this renderer has nothing else for: guest memory at a
   // resolve destination holds nothing it ever wrote, so untiling it gives
@@ -6411,7 +6572,7 @@ uint32_t PlumeDrawContext::BindlessForSlot(const GuestDrawSnapshot& snap, uint32
   if (snap.d3d_vertex_buffer != 0) {
     if (auto it = resolved_targets_.find(fetch.base_address << 12);
         it != resolved_targets_.end()) {
-      return it->second.bindless;
+      return copy_bindless(it->second);
     }
   }
   const uint64_t key = TextureKey(fetch);
@@ -6422,7 +6583,7 @@ uint32_t PlumeDrawContext::BindlessForSlot(const GuestDrawSnapshot& snap, uint32
   // address, hence the shift.
   if (auto it = resolved_targets_.find(fetch.base_address << 12);
       it != resolved_targets_.end()) {
-    return it->second.bindless;
+    return copy_bindless(it->second);
   }
   return 0;
 }
@@ -7327,7 +7488,57 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
     }
     EncodeStage("binding textures (creating and uploading them)");
     alignas(16) uint8_t shared[kSharedConstantBytes];
-    FillSharedConstants(shared, snap, width, height);
+    NoteShrinkingReads(snap);
+    {
+      // The half-pixel offset against what the draw is drawn into: a smaller
+      // target's own size, in its corner (native_extent), as its viewport is.
+      // Against the whole frame it came out at 0.5 - 0.1 x 12 = -0.7 of a
+      // 3840-wide frame's pixels rather than half of one of the bloom's 320,
+      // and the bloom's fifty-odd blur passes, each over the last, walked
+      // the glare some 40 pixels up and to the left: a faint copy of every
+      // pole beside it, sliding as the pole moved across the screen.
+      uint32_t grid_w = width;
+      uint32_t grid_h = height;
+      if (snap.d3d_vertex_buffer != 0) {
+        native_extent(snap.d3d_target_width, snap.d3d_target_height, grid_w, grid_h);
+      }
+      FillSharedConstants(shared, snap, grid_w, grid_h);
+      // XERENGE_COMPOSITE_SHIFT=<pixels>: another half-pixel offset for the
+      // pass that draws the frame's copy over the whole frame - the composite
+      // of the 3D picture - in the frame's own pixels. The title gives that
+      // pass texture coordinates from 0 to 1 and no half texel (its bloom's
+      // blur adds one where it wants a pixel as it is), so Direct3D 9's pixel
+      // centres put every sample on the corner between four of the copy's
+      // pixels: on the console the composite is also a 2x2 average of the
+      // scene. The copy is kept at the frame's size here, and the offset above
+      // - chosen for the interface, which is laid out on the guest's grid -
+      // leaves each sample 0.5 - 0.1 f of a pixel off its own: 0.35 at 1080p,
+      // 0.3 at 1440p, 0.2 at 2160p, a faint soft focus over the whole scene
+      // that is neither the console's nor none. 0 reads every pixel of the
+      // copy on its centre, the sharpest; 0.5 is the console's 2x2 average at
+      // the frame's resolution. Unset it is 0: above 720p the picture is
+      // wanted sharp, and the soft focus was nobody's choice. "old" leaves the
+      // offset above as it is; at 720p and below nothing changes either way.
+      static const float composite_shift = [] {
+        const char* v = std::getenv("XERENGE_COMPOSITE_SHIFT");
+        if (!v || !*v) {
+          return 0.0f;
+        }
+        return std::strcmp(v, "old") == 0 ? -1.0f : std::strtof(v, nullptr);
+      }();
+      if (composite_shift >= 0.0f && reads_copy && !is_video && grid_w == width &&
+          grid_h == height) {
+        const auto fetch = TextureFetchAt(snap, 0);
+        const auto copy = resolved_targets_.find(fetch.base_address << 12);
+        if (copy != resolved_targets_.end() && copy->second.width == width &&
+            copy->second.height == height && width > fetch.size_2d.width + 1u) {
+          const float half_x = 2.0f * composite_shift / float(width);
+          const float half_y = 2.0f * composite_shift / float(height);
+          std::memcpy(shared + 280, &half_x, 4);
+          std::memcpy(shared + 284, &half_y, 4);
+        }
+      }
+    }
     if (have_last_shared && std::memcmp(last_shared, shared, kSharedConstantBytes) == 0) {
       shared_slot = last_shared_slot;
     } else {
