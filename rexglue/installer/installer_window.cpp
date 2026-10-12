@@ -1,5 +1,7 @@
 #include "installer_window.h"
 
+#include "game_icon.h"
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -429,6 +431,14 @@ bool WriteText(const QString& path, const QString& text, bool executable) {
                         QFileDevice::ExeOther);
   }
   return true;
+}
+
+// One line for install.log, of what went another way than planned.
+void AppendLog(const QString& log_path, const QString& line) {
+  QFile log(log_path);
+  if (!log_path.isEmpty() && log.open(QIODevice::Append | QIODevice::Text)) {
+    log.write((line + "\n").toUtf8());
+  }
 }
 
 }  // namespace
@@ -1294,6 +1304,14 @@ QString InstallerWindow::WriteSettings() const {
 QString InstallerWindow::CreateShortcuts() const {
   const QDir install(install_dir_);
   const QString launcher = install.filePath(kLauncherName);
+#ifndef Q_OS_WIN
+  // The game's icon is made here, from the logo in the game files just
+  // installed (game_icon.h). Another release of the disc may not have it in
+  // the same place: then the shortcut gets the stand-in below, the log says
+  // why, and the installation goes on.
+  QString icon_error;
+  const QImage logo = ReadGameLogo(install.filePath("game"), &icon_error);
+#endif
 #ifdef Q_OS_WIN
   // On Windows QFile::link makes a .lnk shortcut: one in the Start menu's
   // programs and one on the desktop.
@@ -1347,14 +1365,30 @@ QString InstallerWindow::CreateShortcuts() const {
   if (!WriteText(app.filePath("Contents/MacOS/burnout-revenge"), run, true)) {
     return tr("cannot write %1").arg(app.filePath("Contents/MacOS/burnout-revenge"));
   }
-  // The installer's own icon, when it was packed with one.
-  const QString icon =
-      QDir(QCoreApplication::applicationDirPath()).filePath("../Resources/xerenge.icns");
-  if (QFileInfo::exists(icon)) {
-    CopyFile(icon, app.filePath("Contents/Resources/xerenge.icns"));
+  const QString icns = app.filePath("Contents/Resources/xerenge.icns");
+  if (!logo.isNull()) {
+    icon_error = WriteGameIcns(logo, icns);
+  }
+  if (!icon_error.isEmpty()) {
+    AppendLog(log_path_, QString("icon: %1; using the installer's").arg(icon_error));
+    // The installer's own icon, when it was packed with one.
+    const QString icon =
+        QDir(QCoreApplication::applicationDirPath()).filePath("../Resources/xerenge.icns");
+    if (QFileInfo::exists(icon)) {
+      CopyFile(icon, icns);
+    }
   }
   return {};
 #else
+  // Beside the launcher; the desktop entry names it by its path.
+  QString icon = install.filePath("burnout-revenge.png");
+  if (!logo.isNull()) {
+    icon_error = WriteGameIconPng(logo, icon);
+  }
+  if (!icon_error.isEmpty()) {
+    AppendLog(log_path_, QString("icon: %1; using the desktop's games icon").arg(icon_error));
+    icon = "applications-games";
+  }
   const QString entry = QString(
                             "[Desktop Entry]\n"
                             "Type=Application\n"
@@ -1362,10 +1396,10 @@ QString InstallerWindow::CreateShortcuts() const {
                             "Comment=Burnout Revenge, recompiled (Xerenge)\n"
                             "Exec=\"%1\"\n"
                             "Path=%2\n"
-                            "Icon=applications-games\n"
+                            "Icon=%3\n"
                             "Terminal=false\n"
                             "Categories=Game;\n")
-                            .arg(launcher, install_dir_);
+                            .arg(launcher, install_dir_, icon);
 
   // The applications menu.
   const QString applications =

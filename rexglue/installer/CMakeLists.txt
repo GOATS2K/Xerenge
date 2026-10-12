@@ -14,6 +14,8 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Concurrent)
 
 add_executable(xerenge-installer
     main.cpp
+    game_icon.cpp
+    game_icon.h
     installer_window.cpp
     installer_window.h
 )
