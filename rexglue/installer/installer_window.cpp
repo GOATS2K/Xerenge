@@ -26,6 +26,8 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QTextStream>
@@ -433,18 +435,29 @@ QStringList FilesUnder(const QString& from) {
   return files;
 }
 
+// Through a file beside it renamed over it: the game, which writes what its
+// menu changes into xerenge.conf, never reads half of one.
 bool WriteText(const QString& path, const QString& text, bool executable) {
-  QFile file(path);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+  QSaveFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
     return false;
   }
   file.write(text.toUtf8());
-  file.close();
+  if (!file.commit()) {
+    return false;
+  }
   if (executable) {
-    file.setPermissions(file.permissions() | QFileDevice::ExeOwner | QFileDevice::ExeGroup |
-                        QFileDevice::ExeOther);
+    QFile::setPermissions(path, QFile::permissions(path) | QFileDevice::ExeOwner |
+                                    QFileDevice::ExeGroup | QFileDevice::ExeOther);
   }
   return true;
+}
+
+// The key of a `key = value` line of xerenge.conf, empty for any other line.
+QString ConfKey(const QString& line) {
+  const QString text = line.trimmed();
+  const int equals = text.indexOf('=');
+  return text.startsWith('#') || equals <= 0 ? QString() : text.left(equals).trimmed();
 }
 
 // One line for install.log, of what went another way than planned.
@@ -1335,7 +1348,7 @@ QString InstallerWindow::CopyRuntime(const std::function<void(double)>& progress
 
 QString InstallerWindow::WriteSettings() const {
   const QDir install(install_dir_);
-  const QString settings =
+  QString settings =
       QString("# Burnout Revenge (Xerenge) settings, read by the launcher at every start.\n"
               "# true or false\n"
               "bloom = %1\n"
@@ -1344,6 +1357,26 @@ QString InstallerWindow::WriteSettings() const {
               "renderer = %3\n")
           .arg(bloom_ ? "true" : "false", blur_ ? "true" : "false", xenia_ ? "xenos" : "plume") +
       extra_settings_;
+  // What the file has that nothing here wrote - set in the game's menu, or by
+  // hand - is kept, as the file has it now.
+  QSet<QString> written;
+  for (const QString& line : settings.split('\n')) {
+    written.insert(ConfKey(line));
+  }
+  QString kept;
+  QFile old(install.filePath("xerenge.conf"));
+  if (old.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    while (!old.atEnd()) {
+      const QString line = QString::fromUtf8(old.readLine()).trimmed();
+      const QString key = ConfKey(line);
+      if (!key.isEmpty() && !written.contains(key)) {
+        kept += line + "\n";
+      }
+    }
+  }
+  if (!kept.isEmpty()) {
+    settings += "# Kept as they were: set in the game's menu, or by hand\n" + kept;
+  }
   if (!WriteText(install.filePath("xerenge.conf"), settings, false)) {
     return tr("cannot write %1").arg(install.filePath("xerenge.conf"));
   }

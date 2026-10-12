@@ -11,9 +11,11 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * xerenge.conf, as the desktop installer writes it and its launcher reads it
@@ -194,6 +196,13 @@ final class Settings {
         return value ? "true" : "false";
     }
 
+    /** The key of a `key = value` line, or null for a comment or a blank line. */
+    private static String keyOf(String line) {
+        line = line.trim();
+        int equals = line.indexOf('=');
+        return line.startsWith("#") || equals <= 0 ? null : line.substring(0, equals).trim();
+    }
+
     /** The file, line for line as the desktop installer writes it. */
     boolean save(Context context) {
         StringBuilder out = new StringBuilder();
@@ -261,14 +270,44 @@ final class Settings {
                .append("debug_video_gpu = \n")
                .append("debug_noisy = false\n");
         }
+        // What the file has that nothing above wrote - set in the game's menu,
+        // or by hand - is kept, as the file has it now.
+        Set<String> written = new HashSet<>();
+        for (String line : out.toString().split("\n")) {
+            String key = keyOf(line);
+            if (key != null) {
+                written.add(key);
+            }
+        }
         File file = file(context);
+        StringBuilder kept = new StringBuilder();
+        if (file.isFile()) {
+            try (BufferedReader in = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = in.readLine()) != null) {
+                    String key = keyOf(line);
+                    if (key != null && !written.contains(key)) {
+                        kept.append(line.trim()).append('\n');
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (kept.length() > 0) {
+            out.append("# Kept as they were: set in the game's menu, or by hand\n").append(kept);
+        }
+        // Written beside it and renamed over it, so that the game, which writes
+        // what its menu changes into the same file, never reads half of it.
         file.getParentFile().mkdirs();
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
+        File temporary = new File(file.getPath() + ".tmp");
+        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(temporary), StandardCharsets.UTF_8)) {
             writer.write(out.toString());
-            return true;
         } catch (Exception error) {
+            temporary.delete();
             return false;
         }
+        return temporary.renameTo(file);
     }
 
     // --- the launcher: what the desktop launcher script does with the file ---
