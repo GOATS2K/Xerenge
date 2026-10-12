@@ -48,8 +48,8 @@
     <string name="crash_interpolation_tip">Crash mode runs at thirty frames a second, as on the console: a frame drawn between each two of its frames makes it sixty. The game itself is untouched; nowhere else is affected.</string>
     <string name="install_path">Install path</string>
     <string name="section_gpu">Graphics driver</string>
-    <string name="gpu_ok">The system Vulkan driver is recent enough (1.1 or newer).</string>
-    <string name="gpu_too_old">The system Vulkan driver is below 1.1, which the game needs. Load a Mesa Turnip driver package (.zip, the kind emulators use).</string>
+    <string name="gpu_ok">The system has a Vulkan driver, which is what the game needs.</string>
+    <string name="gpu_too_old">The system has no Vulkan driver. On an Adreno (Snapdragon) phone, load a Mesa Turnip driver package (.zip, the kind emulators use).</string>
     <string name="gpu_custom">Using the loaded driver: %1$s</string>
     <string name="pick_driver">Load a Turnip driver (.zip)…</string>
     <string name="use_system_driver">Use the system driver again</string>
