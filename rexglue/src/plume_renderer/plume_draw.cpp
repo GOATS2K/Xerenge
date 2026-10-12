@@ -7489,7 +7489,21 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
     EncodeStage("binding textures (creating and uploading them)");
     alignas(16) uint8_t shared[kSharedConstantBytes];
     NoteShrinkingReads(snap);
-    FillSharedConstants(shared, snap, width, height);
+    {
+      // The half-pixel offset against what the draw is drawn into: a smaller
+      // target's own size, in its corner (native_extent), as its viewport is.
+      // Against the whole frame it came out at 0.5 - 0.1 x 12 = -0.7 of a
+      // 3840-wide frame's pixels rather than half of one of the bloom's 320,
+      // and the bloom's fifty-odd blur passes, each over the last, walked
+      // the glare some 40 pixels up and to the left: a faint copy of every
+      // pole beside it, sliding as the pole moved across the screen.
+      uint32_t grid_w = width;
+      uint32_t grid_h = height;
+      if (snap.d3d_vertex_buffer != 0) {
+        native_extent(snap.d3d_target_width, snap.d3d_target_height, grid_w, grid_h);
+      }
+      FillSharedConstants(shared, snap, grid_w, grid_h);
+    }
     if (have_last_shared && std::memcmp(last_shared, shared, kSharedConstantBytes) == 0) {
       shared_slot = last_shared_slot;
     } else {
