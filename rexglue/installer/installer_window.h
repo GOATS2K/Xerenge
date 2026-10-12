@@ -100,6 +100,10 @@ class InstallerWindow : public QWidget {
   QComboBox* grade_combo_ = nullptr;
   QComboBox* aa_combo_ = nullptr;
   QComboBox* sharpen_combo_ = nullptr;
+  QComboBox* power_combo_ = nullptr;
+  // Performance power mode's spin before each vblank, in ms; edited in the
+  // conf only, kept by an update.
+  QString spin_lead_ms_ = "8";
   QCheckBox* fps_box_ = nullptr;
   QCheckBox* fps30_box_ = nullptr;
   QCheckBox* framegen_box_ = nullptr;

@@ -128,6 +128,10 @@ brightness=$(value brightness)
 [ -n "$brightness" ] && export XERENGE_BRIGHTNESS="$brightness"
 shadow_lift=$(value shadow_lift)
 [ -n "$shadow_lift" ] && export XERENGE_SHADOW_LIFT="$shadow_lift"
+power=$(value power_mode)
+[ -n "$power" ] && export XERENGE_POWER_MODE="$power"
+lead=$(value spin_lead_ms)
+[ -n "$lead" ] && export XERENGE_SPIN_LEAD_MS="$lead"
 [ "$(value fps_counter)" = true ] && export XERENGE_FPS_SHOW=1
 [ "$(value fps_30)" = true ] && export XERENGE_FPS_30=1
 [ "$(value frame_generation)" = true ] && export XERENGE_FRAME_GENERATION=120
@@ -241,6 +245,8 @@ if defined aa set "XERENGE_AA=%aa%"
 if defined sharpen set "XERENGE_SHARPEN=%sharpen%"
 if defined brightness set "XERENGE_BRIGHTNESS=%brightness%"
 if defined shadow_lift set "XERENGE_SHADOW_LIFT=%shadow_lift%"
+if defined power_mode set "XERENGE_POWER_MODE=%power_mode%"
+if defined spin_lead_ms set "XERENGE_SPIN_LEAD_MS=%spin_lead_ms%"
 if /i "%fps_counter%"=="true" set "XERENGE_FPS_SHOW=1"
 if /i "%fps_30%"=="true" set "XERENGE_FPS_30=1"
 if /i "%frame_generation%"=="true" set "XERENGE_FRAME_GENERATION=120"
@@ -675,6 +681,18 @@ InstallerWindow::InstallerWindow(QWidget* parent) : QWidget(parent) {
                                 "smaller render size takes. Costs a weak GPU very little."));
   sharpen_row->addWidget(sharpen_combo_, 1);
   hacks_layout->addLayout(sharpen_row);
+  auto* power_row = new QHBoxLayout;
+  power_row->addWidget(new QLabel(tr("Power mode")));
+  power_combo_ = new QComboBox;
+  power_combo_->addItem(tr("Stock"), "stock");
+  power_combo_->addItem(tr("Performance"), "performance");
+  power_combo_->setToolTip(
+      tr("Stock sleeps between frames, and the CPU clocks down: a handheld such as the Steam "
+         "Deck dips below sixty now and then. Performance spins the last few milliseconds "
+         "before each frame (spin_lead_ms in xerenge.conf, 8 by default) for a steady sixty, "
+         "at a few watts more."));
+  power_row->addWidget(power_combo_, 1);
+  hacks_layout->addLayout(power_row);
   fps_box_ = new QCheckBox(tr("Frame counter"));
   fps_box_->setToolTip(tr("Frames per second in the top left corner."));
   hacks_layout->addWidget(fps_box_);
@@ -993,6 +1011,10 @@ void InstallerWindow::LoadSettings(const QString& path) {
   choice("colour_grade", grade_combo_);
   choice("aa", aa_combo_);
   choice("sharpen", sharpen_combo_);
+  choice("power_mode", power_combo_);
+  if (values.contains("spin_lead_ms")) {
+    spin_lead_ms_ = values.value("spin_lead_ms");
+  }
   flag("fps_counter", fps_box_);
   flag("fps_30", fps30_box_);
   flag("frame_generation", framegen_box_);
@@ -1099,6 +1121,10 @@ void InstallerWindow::StartInstall() {
         << "# Anti-aliasing: off, fxaa or smaa; sharpening: 0 (off) to 1\n"
         << "aa = " << aa_combo_->currentData().toString() << "\n"
         << "sharpen = " << sharpen_combo_->currentData().toString() << "\n"
+        << "# How the game waits for each frame: stock, or performance (a steadier 60 fps,\n"
+        << "# more power), which spins the last spin_lead_ms (0 to 16) before it\n"
+        << "power_mode = " << power_combo_->currentData().toString() << "\n"
+        << "spin_lead_ms = " << spin_lead_ms_ << "\n"
         << "fps_counter = " << (fps_box_->isChecked() ? "true" : "false") << "\n"
         << "fps_30 = " << (fps30_box_->isChecked() ? "true" : "false") << "\n"
         << "frame_generation = " << (framegen_box_->isChecked() ? "true" : "false") << "\n"
