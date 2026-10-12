@@ -7503,6 +7503,41 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
         native_extent(snap.d3d_target_width, snap.d3d_target_height, grid_w, grid_h);
       }
       FillSharedConstants(shared, snap, grid_w, grid_h);
+      // XERENGE_COMPOSITE_SHIFT=<pixels>: another half-pixel offset for the
+      // pass that draws the frame's copy over the whole frame - the composite
+      // of the 3D picture - in the frame's own pixels. The title gives that
+      // pass texture coordinates from 0 to 1 and no half texel (its bloom's
+      // blur adds one where it wants a pixel as it is), so Direct3D 9's pixel
+      // centres put every sample on the corner between four of the copy's
+      // pixels: on the console the composite is also a 2x2 average of the
+      // scene. The copy is kept at the frame's size here, and the offset above
+      // - chosen for the interface, which is laid out on the guest's grid -
+      // leaves each sample 0.5 - 0.1 f of a pixel off its own: 0.35 at 1080p,
+      // 0.3 at 1440p, 0.2 at 2160p, a faint soft focus over the whole scene
+      // that is neither the console's nor none. 0 reads every pixel of the
+      // copy on its centre, the sharpest; 0.5 is the console's 2x2 average at
+      // the frame's resolution. Unset it is 0: above 720p the picture is
+      // wanted sharp, and the soft focus was nobody's choice. "old" leaves the
+      // offset above as it is; at 720p and below nothing changes either way.
+      static const float composite_shift = [] {
+        const char* v = std::getenv("XERENGE_COMPOSITE_SHIFT");
+        if (!v || !*v) {
+          return 0.0f;
+        }
+        return std::strcmp(v, "old") == 0 ? -1.0f : std::strtof(v, nullptr);
+      }();
+      if (composite_shift >= 0.0f && reads_copy && !is_video && grid_w == width &&
+          grid_h == height) {
+        const auto fetch = TextureFetchAt(snap, 0);
+        const auto copy = resolved_targets_.find(fetch.base_address << 12);
+        if (copy != resolved_targets_.end() && copy->second.width == width &&
+            copy->second.height == height && width > fetch.size_2d.width + 1u) {
+          const float half_x = 2.0f * composite_shift / float(width);
+          const float half_y = 2.0f * composite_shift / float(height);
+          std::memcpy(shared + 280, &half_x, 4);
+          std::memcpy(shared + 284, &half_y, 4);
+        }
+      }
     }
     if (have_last_shared && std::memcmp(last_shared, shared, kSharedConstantBytes) == 0) {
       shared_slot = last_shared_slot;
