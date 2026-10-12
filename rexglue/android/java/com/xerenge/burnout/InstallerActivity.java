@@ -98,7 +98,7 @@ public class InstallerActivity extends Activity {
     private TextView logFolderField;
     private Button logFolderClear;
     private Spinner languageSpinner;
-    private CheckBox asyncBox, earlySubmitBox, packedVerticesBox, cullingBox, reflectionSplitBox, fpsBox, fps30Box,
+    private CheckBox asyncBox, earlySubmitBox, packedVerticesBox, cullingBox, reflectionSplitBox, etc2Box, fpsBox, fps30Box,
             frameGenBox, crashInterpBox;
     private Spinner resolutionSpinner, anisotropySpinner;
     private CheckBox aspectBox;
@@ -389,6 +389,7 @@ public class InstallerActivity extends Activity {
         packedVerticesBox = check(hacks, R.string.packed_vertices, R.string.packed_vertices_tip);
         cullingBox = check(hacks, R.string.culling, R.string.culling_tip);
         reflectionSplitBox = check(hacks, R.string.reflection_split, R.string.reflection_split_tip);
+        etc2Box = check(hacks, R.string.etc2_textures, R.string.etc2_textures_tip);
         LinearLayout resolutionRow = row(hacks);
         label(resolutionRow, getString(R.string.render_resolution), 15, false, Color.WHITE).setPadding(0, 0, dp(12), 0);
         resolutionSpinner = spinner(resolutionRow, Settings.RESOLUTIONS, getString(R.string.resolution_window));
@@ -498,6 +499,7 @@ public class InstallerActivity extends Activity {
         packedVerticesBox.setChecked(s.packedVertices);
         cullingBox.setChecked(s.culling);
         reflectionSplitBox.setChecked(s.reflectionSplit);
+        etc2Box.setChecked(s.etc2Textures);
         int resolution = indexOf(Settings.RESOLUTIONS, s.renderResolution);
         resolutionSpinner.setSelection(Math.max(resolution, 0));
         int anisotropy = indexOf(Settings.ANISOTROPY, s.anisotropy);
@@ -543,6 +545,7 @@ public class InstallerActivity extends Activity {
         s.packedVertices = packedVerticesBox.isChecked();
         s.culling = cullingBox.isChecked();
         s.reflectionSplit = reflectionSplitBox.isChecked();
+        s.etc2Textures = etc2Box.isChecked();
         s.renderResolution = Settings.RESOLUTIONS[resolutionSpinner.getSelectedItemPosition()][1];
         s.anisotropy = Settings.ANISOTROPY[anisotropySpinner.getSelectedItemPosition()][1];
         s.aspect169 = aspectBox.isChecked();

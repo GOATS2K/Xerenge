@@ -64,6 +64,7 @@ final class Settings {
     boolean frameGeneration;  // frames drawn between the game's, for a 120 Hz screen
     boolean crashInterpolation = true;  // Crash mode drawn at sixty, a frame between each two of its thirty
     boolean reflectionSplit;  // two of the reflection cube's faces a frame
+    boolean etc2Textures;  // BC (DXT) textures re-encoded as ETC2 even where the GPU takes BC
     String renderResolution = "";
     String anisotropy = "4";  // the title asks 8 of the road; 4 costs a phone less
     boolean aspect169 = true;  // Android: keep the frame 16:9, black bars on a wider screen
@@ -141,6 +142,7 @@ final class Settings {
         settings.packedVertices = flag(v, "packed_vertices", settings.packedVertices);
         settings.culling = flag(v, "culling", settings.culling);
         settings.reflectionSplit = flag(v, "reflection_split", settings.reflectionSplit);
+        settings.etc2Textures = flag(v, "etc2_textures", settings.etc2Textures);
         if (v.containsKey("render_resolution")) {
             settings.renderResolution = v.get("render_resolution");
         }
@@ -195,6 +197,7 @@ final class Settings {
            .append("packed_vertices = ").append(tf(packedVertices)).append('\n')
            .append("culling = ").append(tf(culling)).append('\n')
            .append("reflection_split = ").append(tf(reflectionSplit)).append('\n')
+           .append("etc2_textures = ").append(tf(etc2Textures)).append('\n')
            .append("render_resolution = ").append(renderResolution).append('\n')
            .append("# Anisotropic filtering at most: off, 4 or 8\n")
            .append("anisotropy = ").append(anisotropy).append('\n')
@@ -273,6 +276,7 @@ final class Settings {
         if ("false".equals(value("packed_vertices"))) env("XERENGE_FULL_VERTICES", "1");
         if ("true".equals(value("culling"))) env("XERENGE_CULL", "1");
         if ("true".equals(value("reflection_split"))) env("XERENGE_REFLECTION_SPLIT", "1");
+        if ("true".equals(value("etc2_textures"))) env("XERENGE_NO_BC", "1");
         if (!value("render_resolution").isEmpty()) env("XERENGE_RENDER_RESOLUTION", value("render_resolution"));
         if ("off".equals(value("anisotropy"))) env("XERENGE_MAX_ANISOTROPY", "1");
         else if (!value("anisotropy").isEmpty()) env("XERENGE_MAX_ANISOTROPY", value("anisotropy"));

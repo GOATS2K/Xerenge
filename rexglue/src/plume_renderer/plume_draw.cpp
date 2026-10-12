@@ -2487,7 +2487,17 @@ bool PlumeDrawContext::Initialize(plume::RenderDevice* device) {
   {
     const auto probe = device_->createTexture(
         plume::RenderTextureDesc::Texture2D(4, 4, 1, plume::RenderFormat::BC1_UNORM));
-    bc_supported_ = probe && VulkanTextureOk(probe.get());
+    // The feature, not just a texture that could be made: an Adreno 512 has no
+    // textureCompressionBC, created BC textures all the same and sampled them
+    // wrongly - the rank badges, the screen frame and most of the 3D came out as
+    // black and grey slabs on a Redmi Note 7, all fine as ETC2. XERENGE_NO_BC=1
+    // takes the same path on any GPU, for comparing.
+    const bool no_bc_feature = !device_->getCapabilities().textureCompressionBC;
+    // XERENGE_FORCE_BC=1 keeps BC there all the same: a RenderDoc capture
+    // taken there with ETC2 does not replay on a desktop GPU, which has no ETC2.
+    static const bool force_bc = std::getenv("XERENGE_FORCE_BC") != nullptr;
+    bc_supported_ = probe && VulkanTextureOk(probe.get()) && (!no_bc_feature || force_bc) &&
+                    std::getenv("XERENGE_NO_BC") == nullptr;
     if (!bc_supported_) {
       // Phones take ETC2 instead: re-encoded on the processor, still 4 bits a texel.
       // XERENGE_NO_ETC2=1 keeps the RGBA8 fallback, for comparing the two.
@@ -3850,6 +3860,24 @@ void PlumeDrawContext::UnpackVertices(const GuestDrawSnapshot& snap,
           std::lock_guard lock(shown_mutex);
           auto& count = shown_per_shader[snap.vs_hash];
           show = shown_per_shader.size() <= 12 && count < attrs.size();
+          // XERENGE_TRACE_VS=<first hex digits of a hash>: that shader's first
+          // 64 attributes as well, whatever came before (a phone has no RenderDoc).
+          static const std::string traced = [] {
+            const char* v = std::getenv("XERENGE_TRACE_VS");
+            return std::string(v ? v : "");
+          }();
+          if (!traced.empty() && count < 64 &&
+              fmt::format("{:016X}", snap.vs_hash).rfind(traced, 0) == 0) {
+            show = true;
+            if (count % attrs.size() == 0) {
+              const float* c = reinterpret_cast<const float*>(snap.vs_constants.data());
+              REXLOG_INFO("plume: traced vs={:016X} c0..c3 ({:.3g},{:.3g},{:.3g},{:.3g}) ({:.3g},{:.3g},{:.3g},{:.3g}) "
+                          "({:.3g},{:.3g},{:.3g},{:.3g}) ({:.3g},{:.3g},{:.3g},{:.3g}) vb={:08X}+{} n={}",
+                          snap.vs_hash, c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9],
+                          c[10], c[11], c[12], c[13], c[14], c[15], snap.d3d_vertex_buffer,
+                          snap.d3d_vertex_stride, snap.num_indices);
+            }
+          }
           ++count;
         }
         if (show) {
@@ -7612,6 +7640,14 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
     // after a barrier or a copy finds garbage only where nothing looks.
     no_load = all_attachments & ~(read_before_clear | (live & ~cleared));
     discard = all_attachments & ~live & ~read;
+    // XERENGE_KEEP_DEPTH=1: depth always loaded and stored, for telling a pass
+    // that wrongly leaves it unloaded on a tiled GPU (Adreno, Mali) - there an
+    // unloaded attachment is garbage, not what the last pass left.
+    static const bool keep_depth = std::getenv("XERENGE_KEEP_DEPTH") != nullptr;
+    if (keep_depth) {
+      no_load &= ~kDepthBit;
+      discard &= ~kDepthBit;
+    }
     if (xerenge::Diagnostics()) {
       LogPassAccess(from, area_w, no_load, discard);
     }

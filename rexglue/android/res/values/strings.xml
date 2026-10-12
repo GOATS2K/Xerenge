@@ -29,6 +29,8 @@
     <string name="culling_tip">Skip the faces the game culls itself, as the console does. Experimental.</string>
     <string name="reflection_split">Reflections in turns</string>
     <string name="reflection_split_tip">Redraw two of the car reflection\'s six sides a frame, in turn, rather than all six. Faster on a weak GPU; reflections lag a little.</string>
+    <string name="etc2_textures">Textures as ETC2</string>
+    <string name="etc2_textures_tip">Re-encode the game\'s BC (DXT) textures as ETC2 on the processor even where the GPU says it takes BC. For a GPU that draws them wrongly (black or grey patches). Slower texture loading, slightly worse quality; Adreno 5xx gets it anyway.</string>
     <string name="press_back_to_exit">Press back again to exit the game</string>
     <string name="render_resolution">Render resolution</string>
     <string name="resolution_window">The device\'s</string>

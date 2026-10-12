@@ -5,6 +5,8 @@
 #include "plume_renderer/plume_shader_cache.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -457,6 +459,53 @@ const uint32_t* PlumeShaderCache::GetSpirvWords(const ShaderCacheEntry& entry,
   return it->second.data();
 }
 
+// A pixel shader that only writes red, put in place of the shaders listed in
+// XERENGE_RED_PS (hex hashes, comma separated): a draw that then shows red
+// reaches the screen and its own shader is what fails; one that does not is
+// lost before shading. For a GPU without RenderDoc (old Adreno on a phone).
+// glslangValidator -V --target-env vulkan1.0 -e shaderMain of
+// "layout(location = 0) out vec4 colour; void main() { colour = vec4(1, 0, 0, 1); }".
+static const uint32_t kRedPsSpirv[] = {0x07230203u, 0x00010000u, 0x0008000Bu, 0x0000000Du, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000Bu, 0x00000001u, 0x4C534C47u, 0x6474732Eu, 0x3035342Eu, 0x00000000u, 0x0003000Eu, 0x00000000u, 0x00000001u, 0x0007000Fu, 0x00000004u, 0x00000004u, 0x64616873u, 0x614D7265u, 0x00006E69u, 0x00000009u, 0x00030010u, 0x00000004u, 0x00000007u, 0x00030003u, 0x00000002u, 0x000001C2u, 0x00050005u, 0x00000004u, 0x64616873u, 0x614D7265u, 0x00006E69u, 0x00040005u, 0x00000009u, 0x6F6C6F63u, 0x00007275u, 0x00040047u, 0x00000009u, 0x0000001Eu, 0x00000000u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000004u, 0x00040020u, 0x00000008u, 0x00000003u, 0x00000007u, 0x0004003Bu, 0x00000008u, 0x00000009u, 0x00000003u, 0x0004002Bu, 0x00000006u, 0x0000000Au, 0x3F800000u, 0x0004002Bu, 0x00000006u, 0x0000000Bu, 0x00000000u, 0x0007002Cu, 0x00000007u, 0x0000000Cu, 0x0000000Au, 0x0000000Bu, 0x0000000Bu, 0x0000000Au, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200F8u, 0x00000005u, 0x0003003Eu, 0x00000009u, 0x0000000Cu, 0x000100FDu, 0x00010038u};
+
+static std::vector<uint64_t> ListedHashes(const char* variable) {
+    std::vector<uint64_t> hashes;
+    if (const char* list = std::getenv(variable)) {
+      for (const char* p = list; *p;) {
+        char* end = nullptr;
+        const uint64_t value = std::strtoull(p, &end, 16);
+        if (end == p) {
+          break;
+        }
+        // Eight digits or fewer: the top half of the hash (a property on Android 10
+        // holds 91 characters, not five whole hashes).
+        hashes.push_back(end - p <= 8 ? (value << 32) | 0xFFFFFFFFull : value);
+        p = *end == ',' ? end + 1 : end;
+      }
+    }
+    return hashes;
+}
+
+static bool Listed(const std::vector<uint64_t>& listed, uint64_t hash) {
+  return std::any_of(listed.begin(), listed.end(), [hash](uint64_t h) {
+    return (h & 0xFFFFFFFFull) == 0xFFFFFFFFull ? (h >> 32) == (hash >> 32) : h == hash;
+  });
+}
+
+static bool RedPixelShader(uint64_t hash) {
+  static const std::vector<uint64_t> listed = ListedHashes("XERENGE_RED_PS");
+  return Listed(listed, hash);
+}
+
+// And a vertex shader that only places the vertex - position from location 1
+// through c0..c3, Y flipped as the translated ones do - in place of those in
+// XERENGE_SIMPLE_VS: what the title's shader computes besides, taken out.
+static const uint32_t kSimpleVsSpirv[] = {0x07230203u, 0x00010000u, 0x0008000Bu, 0x00000039u, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000Bu, 0x00000001u, 0x4C534C47u, 0x6474732Eu, 0x3035342Eu, 0x00000000u, 0x0003000Eu, 0x00000000u, 0x00000001u, 0x0008000Fu, 0x00000000u, 0x00000004u, 0x64616873u, 0x614D7265u, 0x00006E69u, 0x0000000Bu, 0x00000019u, 0x00030003u, 0x00000002u, 0x000001C2u, 0x00050005u, 0x00000004u, 0x64616873u, 0x614D7265u, 0x00006E69u, 0x00030005u, 0x00000009u, 0x00000070u, 0x00050005u, 0x0000000Bu, 0x69736F70u, 0x6E6F6974u, 0x00000000u, 0x00060005u, 0x00000017u, 0x505F6C67u, 0x65567265u, 0x78657472u, 0x00000000u, 0x00060006u, 0x00000017u, 0x00000000u, 0x505F6C67u, 0x7469736Fu, 0x006E6F69u, 0x00070006u, 0x00000017u, 0x00000001u, 0x505F6C67u, 0x746E696Fu, 0x657A6953u, 0x00000000u, 0x00070006u, 0x00000017u, 0x00000002u, 0x435F6C67u, 0x4470696Cu, 0x61747369u, 0x0065636Eu, 0x00070006u, 0x00000017u, 0x00000003u, 0x435F6C67u, 0x446C6C75u, 0x61747369u, 0x0065636Eu, 0x00030005u, 0x00000019u, 0x00000000u, 0x00060005u, 0x0000001Eu, 0x74726556u, 0x6F437865u, 0x6174736Eu, 0x0073746Eu, 0x00040006u, 0x0000001Eu, 0x00000000u, 0x00000063u, 0x00030005u, 0x00000020u, 0x00007376u, 0x00040047u, 0x0000000Bu, 0x0000001Eu, 0x00000001u, 0x00030047u, 0x00000017u, 0x00000002u, 0x00050048u, 0x00000017u, 0x00000000u, 0x0000000Bu, 0x00000000u, 0x00050048u, 0x00000017u, 0x00000001u, 0x0000000Bu, 0x00000001u, 0x00050048u, 0x00000017u, 0x00000002u, 0x0000000Bu, 0x00000003u, 0x00050048u, 0x00000017u, 0x00000003u, 0x0000000Bu, 0x00000004u, 0x00040047u, 0x0000001Du, 0x00000006u, 0x00000010u, 0x00030047u, 0x0000001Eu, 0x00000002u, 0x00050048u, 0x0000001Eu, 0x00000000u, 0x00000023u, 0x00000000u, 0x00040047u, 0x00000020u, 0x00000021u, 0x00000000u, 0x00040047u, 0x00000020u, 0x00000022u, 0x00000000u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000004u, 0x00040020u, 0x00000008u, 0x00000007u, 0x00000007u, 0x00040020u, 0x0000000Au, 0x00000001u, 0x00000007u, 0x0004003Bu, 0x0000000Au, 0x0000000Bu, 0x00000001u, 0x00040017u, 0x0000000Cu, 0x00000006u, 0x00000003u, 0x0004002Bu, 0x00000006u, 0x0000000Fu, 0x3F800000u, 0x00040015u, 0x00000014u, 0x00000020u, 0x00000000u, 0x0004002Bu, 0x00000014u, 0x00000015u, 0x00000001u, 0x0004001Cu, 0x00000016u, 0x00000006u, 0x00000015u, 0x0006001Eu, 0x00000017u, 0x00000007u, 0x00000006u, 0x00000016u, 0x00000016u, 0x00040020u, 0x00000018u, 0x00000003u, 0x00000017u, 0x0004003Bu, 0x00000018u, 0x00000019u, 0x00000003u, 0x00040015u, 0x0000001Au, 0x00000020u, 0x00000001u, 0x0004002Bu, 0x0000001Au, 0x0000001Bu, 0x00000000u, 0x0004002Bu, 0x00000014u, 0x0000001Cu, 0x00000100u, 0x0004001Cu, 0x0000001Du, 0x00000007u, 0x0000001Cu, 0x0003001Eu, 0x0000001Eu, 0x0000001Du, 0x00040020u, 0x0000001Fu, 0x00000002u, 0x0000001Eu, 0x0004003Bu, 0x0000001Fu, 0x00000020u, 0x00000002u, 0x00040020u, 0x00000021u, 0x00000002u, 0x00000007u, 0x0004002Bu, 0x0000001Au, 0x00000026u, 0x00000001u, 0x0004002Bu, 0x0000001Au, 0x0000002Cu, 0x00000002u, 0x0004002Bu, 0x0000001Au, 0x00000031u, 0x00000003u, 0x00040020u, 0x00000037u, 0x00000003u, 0x00000007u, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200F8u, 0x00000005u, 0x0004003Bu, 0x00000008u, 0x00000009u, 0x00000007u, 0x0004003Du, 0x00000007u, 0x0000000Du, 0x0000000Bu, 0x0008004Fu, 0x0000000Cu, 0x0000000Eu, 0x0000000Du, 0x0000000Du, 0x00000000u, 0x00000001u, 0x00000002u, 0x00050051u, 0x00000006u, 0x00000010u, 0x0000000Eu, 0x00000000u, 0x00050051u, 0x00000006u, 0x00000011u, 0x0000000Eu, 0x00000001u, 0x00050051u, 0x00000006u, 0x00000012u, 0x0000000Eu, 0x00000002u, 0x00070050u, 0x00000007u, 0x00000013u, 0x00000010u, 0x00000011u, 0x00000012u, 0x0000000Fu, 0x0003003Eu, 0x00000009u, 0x00000013u, 0x00060041u, 0x00000021u, 0x00000022u, 0x00000020u, 0x0000001Bu, 0x0000001Bu, 0x0004003Du, 0x00000007u, 0x00000023u, 0x00000022u, 0x0004003Du, 0x00000007u, 0x00000024u, 0x00000009u, 0x00050094u, 0x00000006u, 0x00000025u, 0x00000023u, 0x00000024u, 0x00060041u, 0x00000021u, 0x00000027u, 0x00000020u, 0x0000001Bu, 0x00000026u, 0x0004003Du, 0x00000007u, 0x00000028u, 0x00000027u, 0x0004003Du, 0x00000007u, 0x00000029u, 0x00000009u, 0x00050094u, 0x00000006u, 0x0000002Au, 0x00000028u, 0x00000029u, 0x0004007Fu, 0x00000006u, 0x0000002Bu, 0x0000002Au, 0x00060041u, 0x00000021u, 0x0000002Du, 0x00000020u, 0x0000001Bu, 0x0000002Cu, 0x0004003Du, 0x00000007u, 0x0000002Eu, 0x0000002Du, 0x0004003Du, 0x00000007u, 0x0000002Fu, 0x00000009u, 0x00050094u, 0x00000006u, 0x00000030u, 0x0000002Eu, 0x0000002Fu, 0x00060041u, 0x00000021u, 0x00000032u, 0x00000020u, 0x0000001Bu, 0x00000031u, 0x0004003Du, 0x00000007u, 0x00000033u, 0x00000032u, 0x0004003Du, 0x00000007u, 0x00000034u, 0x00000009u, 0x00050094u, 0x00000006u, 0x00000035u, 0x00000033u, 0x00000034u, 0x00070050u, 0x00000007u, 0x00000036u, 0x00000025u, 0x0000002Bu, 0x00000030u, 0x00000035u, 0x00050041u, 0x00000037u, 0x00000038u, 0x00000019u, 0x0000001Bu, 0x0003003Eu, 0x00000038u, 0x00000036u, 0x000100FDu, 0x00010038u};
+
+static bool SimpleVertexShader(uint64_t hash) {
+  static const std::vector<uint64_t> listed = ListedHashes("XERENGE_SIMPLE_VS");
+  return Listed(listed, hash);
+}
+
 plume::RenderShader* PlumeShaderCache::GetOrCreateShader(uint64_t hash) {
   std::lock_guard lock(mutex_);
   if (!device_) {
@@ -479,10 +528,58 @@ plume::RenderShader* PlumeShaderCache::GetOrCreateShader(uint64_t hash) {
   }
 
   // No SV_ClipDistance for a GPU that cannot take it (see StripClipDistance).
+  // XERENGE_NO_CLIP_DISTANCE=1 strips it anywhere, for telling a driver's
+  // clip distances from the rest.
+  static const bool no_clip = std::getenv("XERENGE_NO_CLIP_DISTANCE") != nullptr;
   std::vector<uint32_t> stripped;
-  if (!device_->getCapabilities().clipDistance && StripClipDistance(words, word_count, &stripped)) {
+  if ((no_clip || !device_->getCapabilities().clipDistance) && StripClipDistance(words, word_count, &stripped)) {
     words = stripped.data();
     word_count = stripped.size();
+  }
+  // Capabilities beyond the plain shader ones, named once per shader: a GPU
+  // that lacks one (Int64, Float16 and the like on Adreno 5xx and old Mali)
+  // runs the shader wrongly rather than refusing it.
+  {
+    std::string unusual;
+    for (size_t i = 5; i < word_count;) {
+      const uint32_t length = words[i] >> 16, opcode = words[i] & 0xFFFF;
+      if (length == 0) {
+        break;
+      }
+      if (opcode == 17 && i + 1 < word_count) {  // OpCapability
+        const uint32_t cap = words[i + 1];
+        // Matrix, Shader, ClipDistance, CullDistance, ImageQuery, DerivativeControl
+        if (cap != 0 && cap != 1 && cap != 32 && cap != 33 && cap != 50 && cap != 51) {
+          unusual += fmt::format(" {}", cap);
+        }
+      } else if (opcode != 17 && opcode != 11 && opcode != 14 && opcode != 15 && opcode != 16 &&
+                 opcode != 10 && opcode != 3 && opcode != 5 && opcode != 6 && opcode != 7) {
+        break;  // past the header's instructions
+      }
+      i += length;
+    }
+    if (!unusual.empty()) {
+      REXLOG_INFO("plume: shader {:016X} needs capabilities{}", hash, unusual);
+    }
+  }
+  // XERENGE_DUMP_SPIRV=<first hex digits of a hash>: that shader's SPIR-V as
+  // spirv_<hash>.spv in the working directory, for spirv-dis.
+  if (const char* dump = std::getenv("XERENGE_DUMP_SPIRV");
+      dump && *dump && fmt::format("{:016X}", hash).rfind(dump, 0) == 0) {
+    if (FILE* f = std::fopen(fmt::format("spirv_{:016X}.spv", hash).c_str(), "wb")) {
+      std::fwrite(words, sizeof(uint32_t), word_count, f);
+      std::fclose(f);
+    }
+  }
+  if (RedPixelShader(hash)) {
+    words = kRedPsSpirv;
+    word_count = std::size(kRedPsSpirv);
+    REXLOG_INFO("plume: pixel shader {:016X} drawn plain red (XERENGE_RED_PS)", hash);
+  }
+  if (SimpleVertexShader(hash)) {
+    words = kSimpleVsSpirv;
+    word_count = std::size(kSimpleVsSpirv);
+    REXLOG_INFO("plume: vertex shader {:016X} replaced by a position-only one (XERENGE_SIMPLE_VS)", hash);
   }
   std::unique_ptr<plume::RenderShader> shader = device_->createShader(
       words, word_count * sizeof(uint32_t), "shaderMain", plume::RenderShaderFormat::SPIRV);

@@ -30,6 +30,7 @@ public class BurnoutActivity extends SDLActivity {
         // it starts, the renderer when it creates its Vulkan instance.
         settings = Settings.load(this);
         settings.applyEnvironment();
+        applyDebugProperty();
         // The last run's logs into the player's folder, if one is picked: the
         // game appends, so a run that crashed or hung is in them (LogExport).
         LogExport.exportAsync(this);
@@ -50,6 +51,32 @@ public class BurnoutActivity extends SDLActivity {
             mLayout.addView(new TouchControls(this, settings.touchOpacity),
                     new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+    }
+
+    // Variables for trying things out from a computer, without writing into
+    // the app's folder (a file pushed there over adb is the shell's, and the
+    // app loses it): adb shell setprop debug.xerenge.env "NAME=value;NAME2=value".
+    // debug.* properties are the shell's to set and anyone's to read.
+    private static void applyDebugProperty() {
+        String value = "";
+        try {
+            java.lang.Process p = Runtime.getRuntime().exec(new String[] {"getprop", "debug.xerenge.env"});
+            try (java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String line = in.readLine();
+                value = line == null ? "" : line.trim();
+            }
+        } catch (Exception ignored) {
+        }
+        for (String pair : value.split(";")) {
+            int equals = pair.indexOf('=');
+            if (equals > 0) {
+                try {
+                    Os.setenv(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim(), true);
+                    android.util.Log.i("xerenge", "debug.xerenge.env: " + pair.trim());
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
 

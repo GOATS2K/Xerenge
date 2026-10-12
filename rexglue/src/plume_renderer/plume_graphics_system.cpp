@@ -13,6 +13,9 @@
 #include <xxhash.h>
 
 #include <SDL3/SDL.h>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
 #include <plume_vulkan.h>
 
@@ -49,6 +52,11 @@
 #endif
 
 namespace rex::plume_renderer {
+
+#if defined(__ANDROID__)
+// Set by the debug.xerenge.capture property, taken by the next frame.
+static std::atomic<bool> g_capture_next_frame{false};
+#endif
 
 namespace {
 // Encoding time of the present being made on this thread, for its breakdown.
@@ -261,10 +269,17 @@ bool PlumeGraphicsSystem::InitializePlumeDevice() {
     if (renderdoc_api_ && renderdoc_api_->api_1_0_0()) {
       // This template overrides renderdoccmd's --capture-file, so run.sh
       // --capture names its per-run directory here instead.
+#if defined(__ANDROID__)
+      // Not on a phone: "logs/captures" is relative to /, which the app cannot
+      // write, and every capture failed without a word. RenderDoc's own place
+      // there is the app's folder, and qrenderdoc fetches the file over adb.
+      REXLOG_INFO("plume: RenderDoc loaded - captures go to its default place");
+#else
       const char* dir = std::getenv("XERENGE_CAPTURE_DIR");
       const std::string capture_dir = dir && *dir ? dir : "logs/captures";
       renderdoc_api_->api_1_0_0()->SetLogFilePathTemplate((capture_dir + "/plume").c_str());
       REXLOG_INFO("plume: RenderDoc loaded - F12 captures to {}/", capture_dir);
+#endif
     }
   }
 #endif
@@ -1699,6 +1714,35 @@ void PlumeGraphicsSystem::PresentGuestFrame(uint32_t width, uint32_t height) {
                          std::memory_order_relaxed);
 
   const uint64_t presented_frame = frame_counter_.fetch_add(1, std::memory_order_relaxed) + 1;
+#if defined(__ANDROID__)
+  // A queue dump on a phone, which has no RenderDoc and no F12: each new value of
+  // the property (adb shell setprop debug.xerenge.dump N) logs the next frame's
+  // draw queue. Looked at once a second.
+  if (draw_context_ && presented_frame % 60 == 0) {
+    static std::string last_dump;
+    char value[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.xerenge.dump", value);
+    if (value[0] != '0' && value[0] != '\0' && last_dump != value) {
+      if (!last_dump.empty() || presented_frame > 60) {
+        draw_context_->RequestQueueDump(std::string("debug.xerenge.dump=") + value);
+      }
+      last_dump = value;
+    }
+    // And a RenderDoc capture of the next frame (adb shell setprop
+    // debug.xerenge.capture N), for the same reason - qrenderdoc's own button
+    // never reached the game on a Redmi Note 7.
+    static std::string last_capture;
+    char capture[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.xerenge.capture", capture);
+    if (capture[0] != '0' && capture[0] != '\0' && last_capture != capture) {
+      if ((!last_capture.empty() || presented_frame > 60) && renderdoc_api_ && renderdoc_api_->api_1_0_0()) {
+        g_capture_next_frame.store(true);
+        REXLOG_INFO("plume: RenderDoc capture requested (debug.xerenge.capture={})", capture);
+      }
+      last_capture = capture;
+    }
+  }
+#endif
 #if !REX_PLATFORM_MAC
   // A RenderDoc capture of chosen frames, without anyone at the keyboard:
   // XERENGE_CAPTURE_FRAME=<n>[,<n>...] asks RenderDoc for the next frame once
@@ -2226,7 +2270,25 @@ void PlumeGraphicsSystem::PresentClearColorOnUiThread(uint32_t guest_width,
       }
     }
   }
+#if defined(__ANDROID__)
+  // A capture asked for by debug.xerenge.capture: started and ended around this
+  // frame for the Vulkan instance itself. TriggerCapture went to the window
+  // RenderDoc took as active, the Android interface's own GLES one (the
+  // on-screen pad), and nothing was ever captured.
+  void* capture_device = nullptr;
+  if (g_capture_next_frame.exchange(false) && renderdoc_api_ && renderdoc_api_->api_1_0_0() &&
+      render_interface_ && render_interface_->instance) {
+    capture_device = *reinterpret_cast<void**>(render_interface_->instance);
+    renderdoc_api_->api_1_0_0()->StartFrameCapture(capture_device, nullptr);
+  }
+#endif
   swapchain_->ClearAndPresent(0.03f, 0.04f, 0.07f, 1.0f, encode, &ctx, resolve, hold);
+#if defined(__ANDROID__)
+  if (capture_device) {
+    const uint32_t ok = renderdoc_api_->api_1_0_0()->EndFrameCapture(capture_device, nullptr);
+    REXLOG_INFO("plume: RenderDoc capture {}", ok ? "written" : "failed");
+  }
+#endif
   if ((FrameGenerationEnabled() || CrashInterpolationEnabled()) && !hold) {
     // Kept for the next frame's frames between: swapped, not copied - this
     // frame's list is cleared and refilled next time either way.
