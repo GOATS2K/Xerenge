@@ -5,9 +5,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.util.SparseArray;
+import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -33,8 +36,12 @@ import java.util.Locale;
  *
  * Edit layout lets every button, the stick and the menu be dragged and resized;
  * the result is kept in touch_layout.conf beside xerenge.conf.
+ *
+ * With touch_controls = auto the pad is hidden while a gamepad is connected - a
+ * handheld's built-in one included - and comes back when it is taken away; the
+ * menu button stays.
  */
-final class TouchControls extends View {
+final class TouchControls extends View implements InputManager.InputDeviceListener {
     // SDL_GamepadButton and SDL_GamepadAxis.
     private static final int A = 0, B = 1, X = 2, Y = 3, BACK = 4, START = 6, LB = 9, RB = 10;
     private static final int LEFT_X = 0, LEFT_Y = 1, LEFT_TRIGGER = 4, RIGHT_TRIGGER = 5;
@@ -93,7 +100,14 @@ final class TouchControls extends View {
     };
     private final Control stickControl = controls[10];
 
-    private final boolean padVisible;  // the pad itself; the menu button is always there
+    private boolean padVisible;  // the pad itself; the menu button is always there
+    // touch_controls = auto: the pad is hidden while a gamepad is connected.
+    private final boolean autoHide;
+    // The name of the gamepad connected, for the log, or null.
+    private String gamepad;
+    // Whether the virtual pad has been asked for: only once the pad is first
+    // shown, so a game played on a real pad alone has no second one.
+    private boolean attaching;
     private MenuListener menuListener;
     private boolean editing;
     private Control selected;
@@ -114,9 +128,9 @@ final class TouchControls extends View {
     private final int alpha;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
-    TouchControls(Context context, int opacityPercent, boolean padVisible, MenuListener menuListener) {
+    TouchControls(Context context, int opacityPercent, boolean autoHide, MenuListener menuListener) {
         super(context);
-        this.padVisible = padVisible;
+        this.autoHide = autoHide;
         this.menuListener = menuListener;
         loadLayout();
         alpha = Math.max(10, Math.min(100, opacityPercent)) * 255 / 100;
@@ -124,15 +138,99 @@ final class TouchControls extends View {
         ring.setStyle(Paint.Style.STROKE);
         text.setTextAlign(Paint.Align.CENTER);
         text.setFakeBoldText(true);
-        // The pad appears once the game has brought SDL's joysticks up.
-        if (padVisible) handler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (!nativeAttach()) {
-                    handler.postDelayed(this, 500);
+        findGamepad();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (autoHide) {
+            InputManager input = (InputManager) getContext().getSystemService(Context.INPUT_SERVICE);
+            input.registerInputDeviceListener(this, handler);
+            findGamepad();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (autoHide) {
+            InputManager input = (InputManager) getContext().getSystemService(Context.INPUT_SERVICE);
+            input.unregisterInputDeviceListener(this);
+        }
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    public void onInputDeviceAdded(int id) {
+        findGamepad();
+    }
+
+    @Override
+    public void onInputDeviceRemoved(int id) {
+        findGamepad();
+    }
+
+    @Override
+    public void onInputDeviceChanged(int id) {
+        findGamepad();
+    }
+
+    // Whether a gamepad is connected, for auto: any device Android calls a
+    // gamepad or a joystick, which a handheld's built-in pad is. The pad these
+    // controls work is SDL's own and not one of Android's devices; Android's
+    // virtual devices are left out.
+    private void findGamepad() {
+        String found = null;
+        if (autoHide) {
+            for (int id : InputDevice.getDeviceIds()) {
+                InputDevice device = InputDevice.getDevice(id);
+                if (device == null || device.isVirtual()) {
+                    continue;
+                }
+                int sources = device.getSources();
+                if ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                        || (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) {
+                    found = device.getName();
+                    break;
                 }
             }
-        });
+            if (found == null ? gamepad != null : !found.equals(gamepad)) {
+                Log.i("Xerenge", found != null ? "touch controls: gamepad \"" + found + "\" connected, pad hidden"
+                        : "touch controls: no gamepad connected, pad shown");
+            }
+        }
+        gamepad = found;
+        boolean shown = found == null;
+        if (shown != padVisible) {
+            if (!shown) {
+                letGo();
+            }
+            padVisible = shown;
+            invalidate();
+        }
+        // The pad appears once the game has brought SDL's joysticks up.
+        if (padVisible && !attaching) {
+            attaching = true;
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (!nativeAttach()) {
+                        handler.postDelayed(this, 500);
+                    }
+                }
+            });
+        }
+    }
+
+    // Whatever is held is let go of, as the pad leaves the screen.
+    private void letGo() {
+        for (int i = 0; i < pointers.size(); ++i) {
+            press(pointers.valueAt(i), false);
+        }
+        pointers.clear();
+        if (stickPointer >= 0) {
+            releaseStick();
+        }
     }
 
     @Override
@@ -235,7 +333,7 @@ final class TouchControls extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        if (padVisible) {
+        if (padVisible || editing) {
             // The stick: its base, and the knob where the thumb is.
             paintColor(false, 0.5f);
             canvas.drawCircle(stickCentreX, stickCentreY, stickRadius, fill);
@@ -244,7 +342,7 @@ final class TouchControls extends View {
             canvas.drawCircle(stickX, stickY, stickRadius * 0.45f, fill);
         }
         for (Control control : controls) {
-            if (control.stick || (!padVisible && !control.menu)) {
+            if (control.stick || (!padVisible && !editing && !control.menu)) {
                 continue;
             }
             paintColor(control.down, 1.0f);

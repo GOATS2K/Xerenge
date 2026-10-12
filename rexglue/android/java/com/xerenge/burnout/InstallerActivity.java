@@ -110,7 +110,8 @@ public class InstallerActivity extends Activity {
     private TextView serverNote;
     private boolean onlineSaved;
     // The controls tab.
-    private CheckBox touchBox;
+    private Spinner touchSpinner;
+    private String[][] touchChoices;
     private SeekBar opacityBar;
     private TextView opacityLabel;
     // Below the tabs.
@@ -468,7 +469,16 @@ public class InstallerActivity extends Activity {
 
     private LinearLayout buildControlsPage() {
         LinearLayout page = page();
-        touchBox = check(page, R.string.touch_controls, R.string.touch_controls_tip);
+        // The three values of touch_controls, with their names here.
+        touchChoices = new String[][] {
+            {getString(R.string.touch_controls_auto), "auto"},
+            {getString(R.string.touch_controls_on), "on"},
+            {getString(R.string.touch_controls_off), "off"},
+        };
+        LinearLayout touchRow = row(page);
+        label(touchRow, getString(R.string.touch_controls), 15, false, Color.WHITE).setPadding(0, 0, dp(12), 0);
+        touchSpinner = spinner(touchRow, touchChoices, "");
+        note(page, R.string.touch_controls_tip);
         opacityLabel = label(page, "", 15, false, Color.WHITE);
         opacityBar = new SeekBar(this);
         opacityBar.setMax(90);  // 10..100 percent
@@ -481,7 +491,12 @@ public class InstallerActivity extends Activity {
         });
         page.addView(opacityBar);
         note(page, R.string.touch_opacity_tip);
-        touchBox.setOnCheckedChangeListener((b, on) -> opacityBar.setEnabled(on));
+        touchSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                opacityBar.setEnabled(!"off".equals(touchChoices[position][1]));
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
         showControls(settings);
         return page;
     }
@@ -521,10 +536,10 @@ public class InstallerActivity extends Activity {
     }
 
     private void showControls(Settings s) {
-        touchBox.setChecked(s.touchControls);
+        touchSpinner.setSelection(Math.max(indexOf(touchChoices, s.touchControls), 0));
         opacityBar.setProgress(Math.max(0, Math.min(90, s.touchOpacity - 10)));
         opacityLabel.setText(getString(R.string.touch_opacity, opacityBar.getProgress() + 10));
-        opacityBar.setEnabled(s.touchControls);
+        opacityBar.setEnabled(!"off".equals(s.touchControls));
     }
 
     private Settings collectSettings() {
@@ -553,7 +568,7 @@ public class InstallerActivity extends Activity {
         s.fps30 = fps30Box.isChecked();
         s.frameGeneration = frameGenBox.isChecked();
         s.crashInterpolation = crashInterpBox.isChecked();
-        s.touchControls = touchBox.isChecked();
+        s.touchControls = touchChoices[touchSpinner.getSelectedItemPosition()][1];
         s.touchOpacity = opacityBar.getProgress() + 10;
         return s;
     }

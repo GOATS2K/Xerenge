@@ -49,9 +49,10 @@ public class BurnoutActivity extends SDLActivity {
         // The on-screen pad, over SDL's surface, with a menu button at its top right
         // whose one entry is the layout editor (drag and resize every control; kept
         // in touch_layout.conf). From PredatorWoah's XerengePlus fork.
-        if (settings.touchControls && mLayout != null) {
+        // touch_controls = auto hides the pad while a gamepad is connected.
+        if (!"off".equals(settings.touchControls) && mLayout != null) {
             final TouchControls[] pad = new TouchControls[1];
-            pad[0] = new TouchControls(this, settings.touchOpacity, true, () ->
+            pad[0] = new TouchControls(this, settings.touchOpacity, "auto".equals(settings.touchControls), () ->
                     new android.app.AlertDialog.Builder(this)
                             .setItems(new String[] {getString(R.string.edit_layout)}, (d, which) -> pad[0].beginEdit())
                             .setNegativeButton(R.string.close, null)
