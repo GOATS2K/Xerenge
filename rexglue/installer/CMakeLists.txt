@@ -20,6 +20,12 @@ add_executable(xerenge-installer
     installer_window.h
 )
 target_link_libraries(xerenge-installer PRIVATE Qt6::Widgets Qt6::Concurrent)
+# Xerenge's icon: the window's on every system (main.cpp), the stand-in for a
+# game whose disc has no logo (CreateShortcuts), and the .exe's on Windows.
+qt_add_resources(xerenge-installer "icons" PREFIX "/" FILES icons/xerenge.png)
+if(WIN32)
+    target_sources(xerenge-installer PRIVATE xerenge.rc)
+endif()
 if(APPLE)
     # An app bundle, so make-macos-app.sh can hand it to macdeployqt.
     set_target_properties(xerenge-installer PROPERTIES

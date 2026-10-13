@@ -30,12 +30,12 @@ app="$build/Burnout Revenge Installer.app"
 rm -rf "$app"
 cp -R "$build/xerenge-installer.app" "$app"
 
-# The icon, made from the AppImage's. That one is 256x256, so nothing larger.
+# The icon: Xerenge's, on the rounded plate a Mac icon has, from 1024x1024.
 iconset="$build/xerenge.iconset"
 rm -rf "$iconset"
 mkdir -p "$iconset" "$app/Contents/Resources"
 icon() {
-    sips -z "$1" "$1" "$here/appimage/xerenge-installer.png" --out "$iconset/$2" >/dev/null
+    sips -z "$1" "$1" "$here/icons/xerenge-rounded.png" --out "$iconset/$2" >/dev/null
 }
 icon 16 icon_16x16.png
 icon 32 icon_16x16@2x.png
@@ -44,6 +44,9 @@ icon 64 icon_32x32@2x.png
 icon 128 icon_128x128.png
 icon 256 icon_128x128@2x.png
 icon 256 icon_256x256.png
+icon 512 icon_256x256@2x.png
+icon 512 icon_512x512.png
+icon 1024 icon_512x512@2x.png
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/xerenge.icns"
 
 "${qt:+$qt/bin/}macdeployqt" "$app"

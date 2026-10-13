@@ -1505,8 +1505,16 @@ QString InstallerWindow::CreateShortcuts() const {
     icon_error = WriteGameIconPng(logo, icon);
   }
   if (!icon_error.isEmpty()) {
-    AppendLog(log_path_, QString("icon: %1; using the desktop's games icon").arg(icon_error));
-    icon = "applications-games";
+    // Xerenge's own icon, from the installer's resources; the desktop's games
+    // icon only if even that cannot be written.
+    const QImage stand_in = QImage(":/icons/xerenge.png").scaled(256, 256, Qt::IgnoreAspectRatio,
+                                                                  Qt::SmoothTransformation);
+    if (!stand_in.isNull() && stand_in.save(icon, "PNG")) {
+      AppendLog(log_path_, QString("icon: %1; using Xerenge's").arg(icon_error));
+    } else {
+      AppendLog(log_path_, QString("icon: %1; using the desktop's games icon").arg(icon_error));
+      icon = "applications-games";
+    }
   }
   const QString entry = QString(
                             "[Desktop Entry]\n"

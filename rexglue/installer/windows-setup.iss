@@ -16,6 +16,7 @@
 AppName=Burnout Revenge (Xerenge)
 AppVersion={#Version}
 AppPublisher=Xerenge
+SetupIconFile=icons\xerenge.ico
 CreateAppDir=no
 Uninstallable=no
 PrivilegesRequired=lowest

@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 #include <QTimer>
 
 #include <cstring>
@@ -17,6 +18,7 @@ int main(int argc, char** argv) {
   }
   QApplication app(argc, argv);
   QApplication::setApplicationName("Xerenge installer");
+  QApplication::setWindowIcon(QIcon(":/icons/xerenge.png"));
 
   QCommandLineParser parser;
   parser.setApplicationDescription("Installs Burnout Revenge (Xerenge) from a disc image.");

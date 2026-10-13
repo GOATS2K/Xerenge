@@ -360,7 +360,11 @@ QString WriteGameIconPng(const QImage& logo, const QString& png_path) {
 int MakeIconCommand(const QString& game_dir, const QString& out_dir) {
   QTextStream out(stdout);
   QString reason;
-  const QImage logo = ReadGameLogo(game_dir, &reason);
+  // A picture in place of the game: its icons drawn the same way, to try a logo.
+  const QImage logo = QFileInfo(game_dir).isFile() ? QImage(game_dir) : ReadGameLogo(game_dir, &reason);
+  if (logo.isNull() && reason.isEmpty()) {
+    reason = QString("cannot read %1").arg(game_dir);
+  }
   if (logo.isNull()) {
     out << "no icon: " << reason << "\n";
     return 1;
