@@ -43,6 +43,8 @@
 #include <rex/system/xmemory.h>
 
 #include "plume_renderer/plume_passthrough_spirv.h"
+#include "plume_renderer/plume_colour_table.h"
+#include "plume_renderer/plume_settings.h"
 #include "plume_renderer/plume_video_spirv.h"
 #include "plume_renderer/plume_shader_cache.h"
 #include "shader_cache.h"
@@ -4841,7 +4843,10 @@ void PlumeDrawContext::UploadLayeredTexture(plume::RenderCommandList* list, uint
   }
   const uint64_t content = XXH3_64bits(src, slice_bytes * layers);
   LayeredTexture& tex = layered_textures_[key];
-  if (tex.texture && tex.content == content) {
+  // A change of the colour settings makes the same table come out differently:
+  // blended again from the title's own bytes.
+  const uint32_t table_version = settings::ColourTableVersion();
+  if (tex.texture && tex.content == content && tex.table_version == table_version) {
     return;
   }
   std::vector<uint8_t> all;
@@ -4861,6 +4866,17 @@ void PlumeDrawContext::UploadLayeredTexture(plume::RenderCommandList* list, uint
     row_bytes = rb;
     row_texels = rt;
     all.insert(all.end(), pixels.begin(), pixels.begin() + size_t(rb) * height);
+  }
+  // A cube of colours, n x n x n: the colour grading table the frame's last
+  // pass looks every pixel up in - the yellow cast. Softened, or taken out,
+  // by the colour grade setting, and brightened by the brightness and the
+  // shadow lift.
+  if (width == height && height == layers && width <= 64 && bpb == 4 &&
+      (host_format == plume::RenderFormat::R8G8B8A8_UNORM ||
+       host_format == plume::RenderFormat::B8G8R8A8_UNORM)) {
+    AdjustColourTable(all.data(), width, row_bytes,
+                      host_format == plume::RenderFormat::B8G8R8A8_UNORM, settings::ColourGrade(),
+                      settings::Brightness(), settings::ShadowLift());
   }
   if (!tex.texture || tex.width != width || tex.height != height || tex.layers != layers) {
     if (tex.index == 0) {
@@ -4924,6 +4940,7 @@ void PlumeDrawContext::UploadLayeredTexture(plume::RenderCommandList* list, uint
   volume_set_->setTexture(tex.index, tex.texture.get(), plume::RenderTextureLayout::SHADER_READ,
                           tex.view.get());
   tex.content = content;
+  tex.table_version = table_version;
 }
 
 uint32_t PlumeDrawContext::SamplerKey(const GuestDrawSnapshot& snap, uint32_t slot) const {
