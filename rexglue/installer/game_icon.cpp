@@ -255,8 +255,35 @@ QImage DrawMaster(const QImage& logo, bool mac, bool close) {
 
 }  // namespace
 
+// A path under the game, each part matched without regard to case: the disc's
+// names come out of an extraction as the image has them (fe/femain.bin here),
+// and only Windows and macOS would find them by another spelling.
+QString FindIgnoringCase(const QString& game_dir, const QStringList& parts) {
+  QDir dir(game_dir);
+  for (int i = 0; i < parts.size(); ++i) {
+    const bool last = i + 1 == parts.size();
+    const QStringList names =
+        dir.entryList(last ? QDir::Files : QDir::Dirs | QDir::NoDotAndDotDot);
+    QString found;
+    for (const QString& name : names) {
+      if (name.compare(parts[i], Qt::CaseInsensitive) == 0) {
+        found = name;
+        break;
+      }
+    }
+    if (found.isEmpty()) {
+      return dir.filePath(parts.mid(i).join('/'));
+    }
+    if (last) {
+      return dir.filePath(found);
+    }
+    dir.cd(found);
+  }
+  return dir.path();
+}
+
 QImage ReadGameLogo(const QString& game_dir, QString* reason) {
-  QFile file(QDir(game_dir).filePath("fe/FeMain.bin"));
+  QFile file(FindIgnoringCase(game_dir, {"fe", "FeMain.bin"}));
   if (!file.open(QIODevice::ReadOnly)) {
     *reason = QString("cannot open %1").arg(file.fileName());
     return {};
