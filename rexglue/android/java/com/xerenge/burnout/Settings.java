@@ -57,6 +57,7 @@ final class Settings {
     static final String[][] ANTI_ALIASING = {
         {null, "off"},
         {"FXAA", "fxaa"},
+        {"SMAA", "smaa"},
     };
 
     /** Sharpening: label (null: off) and strength, 0 to 1. */
@@ -83,7 +84,7 @@ final class Settings {
     boolean etc2Textures;  // BC (DXT) textures re-encoded as ETC2 even where the GPU takes BC
     String renderResolution = "";
     String anisotropy = "4";  // the title asks 8 of the road; 4 costs a phone less
-    String aa = "off";  // FXAA over the finished frame; off, as on the console
+    String aa = "off";  // FXAA or SMAA over the finished frame; off, as on the console
     String sharpen = "0";  // contrast adaptive sharpening, 0 (off) to 1
     boolean aspect169 = true;  // Android: keep the frame 16:9, black bars on a wider screen
     // On-screen controls (Android only; the desktop has the keyboard instead).
@@ -246,7 +247,7 @@ final class Settings {
            .append("render_resolution = ").append(renderResolution).append('\n')
            .append("# Anisotropic filtering at most: off, 4 or 8\n")
            .append("anisotropy = ").append(anisotropy).append('\n')
-           .append("# Anti-aliasing: off or fxaa; sharpening: 0 (off) to 1\n")
+           .append("# Anti-aliasing: off, fxaa or smaa; sharpening: 0 (off) to 1\n")
            .append("aa = ").append(aa).append('\n')
            .append("sharpen = ").append(sharpen).append('\n')
            .append("# Keep the frame 16:9 (black bars on a wider screen)\n")
@@ -359,7 +360,7 @@ final class Settings {
         if (!value("render_resolution").isEmpty()) env("XERENGE_RENDER_RESOLUTION", value("render_resolution"));
         if ("off".equals(value("anisotropy"))) env("XERENGE_MAX_ANISOTROPY", "1");
         else if (!value("anisotropy").isEmpty()) env("XERENGE_MAX_ANISOTROPY", value("anisotropy"));
-        if ("fxaa".equals(value("aa"))) env("XERENGE_AA", "fxaa");
+        if (!value("aa").isEmpty()) env("XERENGE_AA", value("aa"));
         if (!value("sharpen").isEmpty()) env("XERENGE_SHARPEN", value("sharpen"));
         if (!"false".equals(value("aspect_16_9"))) env("XERENGE_ASPECT_16_9", "1");
         if (!value("colour_grade").isEmpty()) env("XERENGE_COLOUR_GRADE", value("colour_grade"));

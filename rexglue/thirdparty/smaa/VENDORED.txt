@@ -1,0 +1,9 @@
+SMAA (Enhanced Subpixel Morphological Antialiasing), reference implementation
+https://github.com/iryoku/smaa, commit 71c806a838bdd7d517df19192a20f0c61b3ca29d
+MIT (LICENSE.txt).
+
+Unmodified: SMAA.hlsl, and Textures/AreaTex.h (160x560, two bytes a texel) and
+Textures/SearchTex.h (64x16, one byte) as AreaTex.h and SearchTex.h.
+
+src/plume_renderer/smaa.frag includes SMAA.hlsl and is compiled ahead of time
+into plume_postfx_spirv.h; plume_postfx.cpp includes the two tables.

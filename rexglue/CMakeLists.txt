@@ -191,6 +191,10 @@ target_include_directories(rexgpu-plume PRIVATE
     # rex/ui/renderdoc_api.h includes <renderdoc_app.h>; rex::runtime does not
     # export that path the way rexui does.
     "${REXSDK_DIR}/thirdparty/renderdoc"
+    # SMAA's reference implementation: its lookup tables (AreaTex.h,
+    # SearchTex.h) for plume_postfx.cpp. The shader, SMAA.hlsl, is compiled
+    # ahead of time with smaa.frag (plume_postfx_spirv.h).
+    "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/smaa"
 )
 if(NOT TARGET xxHash::xxhash)
     add_subdirectory("${XENON_RECOMP_ROOT}/thirdparty/xxHash/cmake_unofficial" xenos-xxhash)

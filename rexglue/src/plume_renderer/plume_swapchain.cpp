@@ -951,11 +951,12 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
     return;
   }
 
-  // FXAA and sharpening are read once for the frame, so a change from the
-  // menu lands between two frames. Turned off, their targets are given back -
+  // Anti-aliasing and sharpening are read once for the frame, so a change
+  // from the menu lands between two frames. Turned off, their targets are
+  // given back, as SMAA's are when it is no longer the anti-aliasing chosen -
   // with every frame done, the other set's too.
   const PlumePostFx::Settings post = PlumePostFx::Settings::Current();
-  if (!post.Any() && post_fx_.HasTargets()) {
+  if (post_fx_.HasSpareTargets(post)) {
     WaitForFrames();
     post_fx_.ReleaseTargets();
   }
@@ -1117,9 +1118,10 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
     resolve(encode_context, command_list_.get(), width, height, draw_target, RenderPassBreak{});
   }
 
-  // What goes to the window: the scene target, or - FXAA and sharpening on -
-  // the target they left it in, at the same size. Recorded in the frame's own
-  // list, so that when the copy waits for the image the passes do not.
+  // What goes to the window: the scene target, or - anti-aliasing or
+  // sharpening on - the target they left it in, at the same size. Recorded in
+  // the frame's own list, so that when the copy waits for the image the passes
+  // do not.
   plume::RenderTexture* const shown = scene_texture_
                                           ? post_fx_.Record(command_list_.get(), draw_target,
                                                             width, height, post)
