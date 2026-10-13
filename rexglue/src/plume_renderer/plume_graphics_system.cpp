@@ -1782,6 +1782,8 @@ void PlumeGraphicsSystem::PaceSwapToVblank() {
       spun_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - spin_started)
                     .count();
+      // Taken again: what follows ran under it before the spin was added.
+      lock.lock();
     }
   } else
 #endif
