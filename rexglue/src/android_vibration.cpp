@@ -4,12 +4,11 @@
 // vibrator, and a phone played on the on-screen controls has no pad at all:
 // the title's rumble then went nowhere. It can go to the device instead.
 //
-// The title sets its pad's motors in one place: sub_825AFEA0, a wrapper that
-// tail-calls XamInputSetState for a user and an XINPUT_VIBRATION - the left,
-// low-frequency big motor and the right, high-frequency small one, 0 to 65535
-// each. It comes there in pairs: from the function that sets the left motor
-// (sub_82360950) and then from the one that sets the right (sub_823609C8),
-// each with both values.
+// The title sets its pad's motors through XamInputSetState: a user and an
+// XINPUT_VIBRATION - the left, low-frequency big motor and the right,
+// high-frequency small one, 0 to 65535 each. The SDK hands every such call to
+// the observer registered here (rex::input::SetVibrationObserver) before any
+// pad sees it, so nothing depends on where in this title's code the call is.
 //
 // Where the rumble goes is XERENGE_VIBRATION, which the launcher sets from
 // `vibration` in xerenge.conf:
@@ -32,13 +31,8 @@
 
 #include <SDL3/SDL.h>
 
-#include <rex/hook.h>
+#include <rex/input/input_system.h>
 #include <rex/logging.h>
-#include <rex/ppc.h>
-
-#include "guest_memory.h"
-
-extern "C" void __imp__sub_825AFEA0(PPCContext& __restrict, uint8_t*);
 
 namespace {
 
@@ -150,10 +144,6 @@ void Device(int strength, Clock::time_point now) {
   g_sent_at = now;
 }
 
-uint16_t LoadBe16(const uint8_t* bytes) {
-  return uint16_t((bytes[0] << 8) | bytes[1]);
-}
-
 }  // namespace
 
 // The vibrator's Java side is ready: its class and the method to call.
@@ -171,13 +161,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_xerenge_burnout_DeviceVibration_nativ
   g_class.store(static_cast<jclass>(env->NewGlobalRef(device)), std::memory_order_release);
 }
 
-REX_HOOK_RAW(sub_825AFEA0) {
-  const uint32_t user = ctx.r3.u32;
-  const uint32_t vibration = ctx.r4.u32;
+namespace {
+
+// Where a vibration goes; true when it is not the pad's (the SDK then tells the
+// pads to stop, and the title that it worked).
+bool RouteVibration(uint32_t user, uint16_t left, uint16_t right) {
   // The device is the first player's; anybody else's pad is left alone.
-  if (user != 0 || vibration == 0) {
-    __imp__sub_825AFEA0(ctx, base);
-    return;
+  if (user != 0) {
+    return false;
   }
   std::lock_guard lock(g_mutex);
   const auto now = Clock::now();
@@ -193,25 +184,17 @@ REX_HOOK_RAW(sub_825AFEA0) {
                 ModeName(mode));
   }
   if (to_pad) {
-    __imp__sub_825AFEA0(ctx, base);
     Device(0, now);
-    return;
+    return false;
   }
-  // XINPUT_VIBRATION: the two motor speeds, big-endian.
-  uint8_t* motors = xerenge::GuestPointer(base, vibration);
-  const uint16_t left = LoadBe16(motors);
-  const uint16_t right = LoadBe16(motors + 2);
-  // The pad is told to stop, whatever it was doing when the setting changed:
-  // the call goes on with both motors at 0, and the title gets its own values
-  // back.
-  uint8_t asked[4];
-  std::memcpy(asked, motors, sizeof(asked));
-  std::memset(motors, 0, sizeof(asked));
-  __imp__sub_825AFEA0(ctx, base);
-  std::memcpy(motors, asked, sizeof(asked));
-  // The title takes a failure to mean the motor was not set and puts its old
-  // value back, which with a pad that cannot rumble is 0 for ever: each call
-  // would then carry one motor's value and never both. It is told it worked.
-  ctx.r3.u64 = 0;
   Device(route == kOff ? 0 : Strength(left, right), now);
+  return true;
 }
+
+// Registered when the library is loaded, before the title runs.
+const bool g_observer_registered = [] {
+  rex::input::SetVibrationObserver(RouteVibration);
+  return true;
+}();
+
+}  // namespace
