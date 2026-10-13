@@ -2489,12 +2489,18 @@ bool PlumeDrawContext::Initialize(plume::RenderDevice* device) {
   {
     const auto probe = device_->createTexture(
         plume::RenderTextureDesc::Texture2D(4, 4, 1, plume::RenderFormat::BC1_UNORM));
-    // The feature, not just a texture that could be made: an Adreno 512 has no
-    // textureCompressionBC, created BC textures all the same and sampled them
-    // wrongly - the rank badges, the screen frame and most of the 3D came out as
-    // black and grey slabs on a Redmi Note 7, all fine as ETC2. XERENGE_NO_BC=1
-    // takes the same path on any GPU, for comparing.
-    const bool no_bc_feature = !device_->getCapabilities().textureCompressionBC;
+    // The feature, or a texture that could be made on a GPU known to sample it
+    // right. Qualcomm's driver reports no textureCompressionBC on any Adreno, yet
+    // 6xx and later sample BC correctly - asked by the feature alone, a Snapdragon
+    // 888 re-encoded every texture as ETC2 on the processor, frames of up to 1.4 s
+    // (GitHub #6). An Adreno 5xx makes BC textures too and samples them wrongly:
+    // the rank badges, the screen frame and most of the 3D came out as black and
+    // grey slabs on a Redmi Note 7, all fine as ETC2. XERENGE_NO_BC=1 takes the
+    // ETC2 path on any GPU, for comparing.
+    const std::string gpu_name = device_->getDescription().name;
+    const bool bc_known_broken = gpu_name.find("Adreno (TM) 5") != std::string::npos;
+    const bool no_bc_feature =
+        !device_->getCapabilities().textureCompressionBC && bc_known_broken;
     // XERENGE_FORCE_BC=1 keeps BC there all the same: a RenderDoc capture
     // taken there with ETC2 does not replay on a desktop GPU, which has no ETC2.
     static const bool force_bc = std::getenv("XERENGE_FORCE_BC") != nullptr;
