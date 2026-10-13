@@ -71,7 +71,10 @@
     <string name="server_note">Playing online through the server %1$s; local multiplayer is off.</string>
     <string name="local_note">Local multiplayer finds the games of the other copies on your network. To play through a server, enter its address.</string>
     <string name="touch_controls">On-screen controls</string>
-    <string name="touch_controls_tip">Translucent pad buttons over the game: a stick on the left half (where the thumb lands is its centre), RT and LT for accelerating and braking, A B X Y, LB RB, Back and Start. A connected pad still works.</string>
+    <string name="touch_controls_tip">Translucent pad buttons over the game: a stick on the left half (where the thumb lands is its centre), RT and LT for accelerating and braking, A B X Y, LB RB, Back and Start. Automatic hides them while a gamepad is connected, a handheld\'s own included; On shows them even then. The menu button at the top right stays.</string>
+    <string name="touch_controls_auto">Automatic</string>
+    <string name="touch_controls_on">On</string>
+    <string name="touch_controls_off">Off</string>
     <string name="touch_opacity">Button opacity: %1$d%%</string>
     <string name="touch_opacity_tip">How much of the picture the buttons cover.</string>
     <string name="ready">Ready.</string>

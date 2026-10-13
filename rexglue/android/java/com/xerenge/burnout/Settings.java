@@ -69,7 +69,8 @@ final class Settings {
     String anisotropy = "4";  // the title asks 8 of the road; 4 costs a phone less
     boolean aspect169 = true;  // Android: keep the frame 16:9, black bars on a wider screen
     // On-screen controls (Android only; the desktop has the keyboard instead).
-    boolean touchControls = true;
+    // auto (shown unless a gamepad is connected, a handheld's own included), on or off.
+    String touchControls = "auto";
     int touchOpacity = 40;  // percent
     /** The debug_* lines of an installed copy, kept as they are. */
     String preservedDebug = "";
@@ -154,7 +155,9 @@ final class Settings {
         settings.fps30 = flag(v, "fps_30", settings.fps30);
         settings.frameGeneration = flag(v, "frame_generation", settings.frameGeneration);
         settings.crashInterpolation = flag(v, "crash_interpolation", settings.crashInterpolation);
-        settings.touchControls = flag(v, "touch_controls", settings.touchControls);
+        if (v.containsKey("touch_controls")) {
+            settings.touchControls = touchControls(v.get("touch_controls"));
+        }
         try {
             if (v.containsKey("touch_opacity")) {
                 settings.touchOpacity = Integer.parseInt(v.get("touch_opacity"));
@@ -162,6 +165,17 @@ final class Settings {
         } catch (NumberFormatException ignored) {
         }
         return settings;
+    }
+
+    /**
+     * touch_controls from what a file has: the line was true or false before it
+     * had three values. true, shown whatever was connected, is auto; false is off.
+     */
+    static String touchControls(String value) {
+        if ("on".equals(value) || "off".equals(value)) {
+            return value;
+        }
+        return "false".equals(value) ? "off" : "auto";
     }
 
     private static boolean flag(Map<String, String> values, String key, boolean fallback) {
@@ -207,8 +221,9 @@ final class Settings {
            .append("fps_30 = ").append(tf(fps30)).append('\n')
            .append("frame_generation = ").append(tf(frameGeneration)).append('\n')
            .append("crash_interpolation = ").append(tf(crashInterpolation)).append('\n')
-           .append("# On-screen controls: translucent pad buttons over the game, and how opaque (percent)\n")
-           .append("touch_controls = ").append(tf(touchControls)).append('\n')
+           .append("# On-screen controls: translucent pad buttons over the game - auto (shown unless a\n")
+           .append("# gamepad is connected), on or off - and how opaque (percent)\n")
+           .append("touch_controls = ").append(touchControls).append('\n')
            .append("touch_opacity = ").append(touchOpacity).append('\n');
         out.append("# Debug mode: detailed logs for reporting a problem. They go to\n")
            .append("# burnout.log beside this file.\n")

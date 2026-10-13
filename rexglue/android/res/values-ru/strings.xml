@@ -70,7 +70,10 @@
     <string name="server_note">Игра по сети через сервер %1$s; локальный мультиплеер выключен.</string>
     <string name="local_note">Локальный мультиплеер находит игры других копий в вашей сети. Чтобы играть через сервер, введите его адрес.</string>
     <string name="touch_controls">Экранное управление</string>
-    <string name="touch_controls_tip">Полупрозрачные кнопки геймпада поверх игры: стик на левой половине экрана (где коснулся палец — там его центр), RT и LT — газ и тормоз, A B X Y, LB RB, Back и Start. Подключённый геймпад тоже работает.</string>
+    <string name="touch_controls_tip">Полупрозрачные кнопки геймпада поверх игры: стик на левой половине экрана (где коснулся палец — там его центр), RT и LT — газ и тормоз, A B X Y, LB RB, Back и Start. «Авто» скрывает их, пока подключён геймпад, в том числе встроенный в консоль; «Включено» показывает их и тогда. Кнопка меню в правом верхнем углу остаётся.</string>
+    <string name="touch_controls_auto">Авто</string>
+    <string name="touch_controls_on">Включено</string>
+    <string name="touch_controls_off">Выключено</string>
     <string name="touch_opacity">Непрозрачность кнопок: %1$d%%</string>
     <string name="touch_opacity_tip">Насколько кнопки перекрывают картинку.</string>
     <string name="ready">Готово к установке.</string>
