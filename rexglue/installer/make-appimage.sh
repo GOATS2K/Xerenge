@@ -43,6 +43,7 @@ export OUTPUT="$here/Burnout_Revenge_Installer-x86_64.AppImage"
 cd "$build"
 linuxdeploy --appdir "$appdir" \
     --executable "$build/xerenge-installer" \
+    --custom-apprun "$here/appimage/AppRun" \
     --desktop-file "$here/appimage/xerenge-installer.desktop" \
     --icon-file "$here/appimage/xerenge-installer.png" \
     --plugin qt \

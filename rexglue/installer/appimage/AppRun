@@ -1,0 +1,9 @@
+#!/bin/sh
+# The installer started by its own path rather than through a symlink: a
+# recent Qt (6.9 on, Arch's for one) takes the directory of the path it was
+# started by, so through linuxdeploy's AppRun -> usr/bin/xerenge-installer it
+# looked for qt.conf and its platform plugins in the AppImage's root, found
+# neither, and aborted before a line was printed. Ubuntu 24.04's Qt 6.4, which
+# CI packs, resolves the link and never showed it.
+here=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+exec "$here/usr/bin/xerenge-installer" "$@"
