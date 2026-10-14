@@ -6,7 +6,7 @@
     <string name="tab_network">Сеть</string>
     <string name="tab_controls">Управление</string>
     <string name="select_iso">Образ игры (ISO)</string>
-    <string name="iso_placeholder">Образ диска Burnout Revenge (Europe), .iso</string>
+    <string name="iso_placeholder">Образ диска Burnout Revenge (Europe или USA), .iso</string>
     <string name="bloom">Свечение (bloom)</string>
     <string name="bloom_tip">Свечение неба и размытие по Гауссу в низком разрешении.</string>
     <string name="blur">Размытие</string>
@@ -96,6 +96,7 @@
     <string name="step_settings">Запись настроек</string>
     <string name="step_failed">%1$s — ошибка: %2$s</string>
     <string name="cannot_write">не удаётся записать %1$s</string>
+    <string name="no_usa_build">это американское издание, а в приложении есть только игра, собранная для европейского</string>
     <string name="checking">Проверка образа: %1$d%%</string>
     <string name="extracting">Распаковка: %1$d из %2$d файлов</string>
     <string name="installed">Установлено. Теперь приложение сразу запускает игру; долгое нажатие на иконку (Установка) вернёт этот экран.</string>

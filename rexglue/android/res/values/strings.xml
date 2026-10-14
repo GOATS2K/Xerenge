@@ -7,7 +7,7 @@
     <string name="tab_network">Network</string>
     <string name="tab_controls">Controls</string>
     <string name="select_iso">Select game ISO</string>
-    <string name="iso_placeholder">Burnout Revenge (Europe) disc image, .iso</string>
+    <string name="iso_placeholder">Burnout Revenge (Europe or USA) disc image, .iso</string>
     <string name="bloom">Bloom on</string>
     <string name="bloom_tip">Sky bloom and the low-resolution gaussian blur.</string>
     <string name="blur">Blur on</string>
@@ -97,6 +97,7 @@
     <string name="step_settings">Writing the settings</string>
     <string name="step_failed">%1$s failed: %2$s</string>
     <string name="cannot_write">cannot write %1$s</string>
+    <string name="no_usa_build">the disc is the American release, and this app carries the game built for the European one only</string>
     <string name="checking">Checking the disc image: %1$d%%</string>
     <string name="extracting">Extracting: %1$d of %2$d files</string>
     <string name="installed">Installed. Opening the app now starts the game; a long press on its icon (Setup) brings this back.</string>

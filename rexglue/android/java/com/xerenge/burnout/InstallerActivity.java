@@ -68,7 +68,8 @@ public class InstallerActivity extends Activity {
     private static final int PICK_LOG_FOLDER = 3;
     // FEATURE_VULKAN_HARDWARE_VERSION encodes versions like VK_MAKE_VERSION.
     private static final int VULKAN_1_0 = 1 << 22;
-    // Files the retail image holds, for the extraction's progress.
+    // Files the European image holds, for the extraction's progress, until the
+    // image is known (the American one holds fewer).
     private static final int IMAGE_FILES = 832;
 
     private static final int BACKGROUND = Color.rgb(18, 18, 22);
@@ -809,8 +810,13 @@ public class InstallerActivity extends Activity {
                 deleteTree(game);
                 game.mkdirs();
                 final long[] last = {0};
+                final int[] imageFiles = {IMAGE_FILES};
                 String error = nativeInstall(descriptor.getFd(), game.getAbsolutePath(), true,
                         (phase, done, all) -> {
+                            if (phase == 2) {
+                                imageFiles[0] = (int) done;
+                                return;
+                            }
                             long now = System.currentTimeMillis();
                             if (now - last[0] < 200) {
                                 return;
@@ -823,8 +829,9 @@ public class InstallerActivity extends Activity {
                                 step = 0.5 * percent / 100.0;
                                 text = getString(R.string.checking, percent);
                             } else {
-                                step = 0.5 + 0.5 * Math.min(done, IMAGE_FILES) / (double) IMAGE_FILES;
-                                text = getString(R.string.extracting, (int) done, IMAGE_FILES);
+                                final int files = imageFiles[0];
+                                step = 0.5 + 0.5 * Math.min(done, files) / (double) files;
+                                text = getString(R.string.extracting, (int) done, files);
                             }
                             post(text, (int) (1000 * extractWeight * step / total));
                         });
@@ -838,6 +845,13 @@ public class InstallerActivity extends Activity {
                     return;
                 }
             }
+            // The American release runs its own build of the game; an APK
+            // made without the American files carries only the European one.
+            if (Settings.usaGame(this) && !hasLibrary("main_usa")) {
+                finishInstall(getString(R.string.step_failed, getString(R.string.step_extract),
+                        getString(R.string.no_usa_build)));
+                return;
+            }
             post(getString(R.string.step_settings) + "...", 1000 * extractWeight / total);
             if (!chosen.save(this)) {
                 finishInstall(getString(R.string.step_failed, getString(R.string.step_settings),
@@ -850,6 +864,13 @@ public class InstallerActivity extends Activity {
             });
             finishInstall(null);
         }, "installer").start();
+    }
+
+    /** Whether the APK carries lib<name>.so. */
+    private boolean hasLibrary(String name) {
+        ClassLoader loader = getClassLoader();
+        return loader instanceof dalvik.system.BaseDexClassLoader
+                && ((dalvik.system.BaseDexClassLoader) loader).findLibrary(name) != null;
     }
 
     private void post(String text, int value) {
