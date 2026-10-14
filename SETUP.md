@@ -5,15 +5,25 @@ on the machine this was developed on; nothing is assumed.
 
 ## What you need
 
-**The game.** A dump of the retail European release, whose image is
-7,834,892,288 bytes and hashes to:
+**The game.** A dump of one of the two retail releases this project knows:
 
-```
-34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4
-```
+| | image size | SHA-256 of the image |
+|---|---|---|
+| Burnout Revenge (Europe) | 7,834,892,288 bytes | `34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4` |
+| Burnout Revenge (USA) | 7,834,892,288 bytes | `7abf689f52b70666ba92052bd157cfcae9ed6290dae298fbf639baa1d169f92b` |
+
+The two executables lay their code out alike - every function at the same
+address, so `rexglue/functions.toml` and the addresses the runtime hooks hold
+for both - but they are not the same build: the territory each was made for is
+compiled into the code. The European one takes its language from the console
+and plays the PAL videos (`ovid/*_P.xmv`); the American one is English (US)
+only and plays the NTSC ones (`*_N.xmv`), which is all its disc carries. So the
+game is generated from the `default.xex` of your own disc, and a build made from
+one release does not run the other's: the European build on the American disc
+stops at once, asking for `Language/Strings/MainUK.bin`.
 
 Another dump is not necessarily unusable, but `rexglue/functions.toml` names
-function addresses found in *this* image, and they will not line up with a
+function addresses found in these images, and they will not line up with a
 different build. No game data is in this repository and none will be.
 
 **A machine with Vulkan.** Developed against Mesa's `radv` on an AMD card under
@@ -141,7 +151,8 @@ or `./run.sh` alone for the xenos backend.
 
 ```
 ./scripts/build-tools.sh   # once: builds extract-image and other setup tools
-./scripts/extract-image --sha256 34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4 <image.iso> game
+./scripts/extract-image --sha256 34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4 \
+    --sha256 7abf689f52b70666ba92052bd157cfcae9ed6290dae298fbf639baa1d169f92b <image.iso> game
 ./scripts/setup-sdk.sh
 ./scripts/setup-deps.sh
 ./scripts/build.sh --game game
@@ -151,7 +162,10 @@ or `./run.sh` alone for the xenos backend.
 ISO 9660, so ordinary tools do not open it - 7-Zip finds a stray UDF header and
 stops - and this avoids depending on `extract-xiso` being installed. It finds
 the game partition (0xFD90000 into this image, after the video partition), walks
-the directory trees and writes the files out: 832 of them, 4.4 GiB.
+the directory trees and writes the files out: 832 of them, 4.4 GiB, from the
+European image, and 803, 3.6 GiB, from the American one, which has one language
+where the European has eleven. `--sha256` may be given more than once; the image
+is accepted when it matches any of them.
 
 **`setup-sdk.sh`** clones our fork of the ReXGlue SDK next to the project and
 builds it. The fork is not a convenience: it carries fixes this title needs,
