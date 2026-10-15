@@ -4,6 +4,7 @@
  */
 #include <set>
 #include "plume_renderer/plume_graphics_system.h"
+#include "plume_renderer/plume_etc2_cache.h"
 #include "diagnostics.h"
 
 #include <cmath>
@@ -2476,7 +2477,8 @@ void PlumeGraphicsSystem::EnableReadPointerWriteBack(uint32_t ptr, uint32_t bloc
 
 void PlumeGraphicsSystem::InitializeShaderStorage(const std::filesystem::path& cache_root,
                                                   uint32_t title_id, bool blocking) {
-  (void)cache_root;
+  // The DXT textures re-encoded as ETC2 (a GPU without BC) are kept there.
+  Etc2Cache::Instance().SetRoot(cache_root);
   (void)blocking;
 
   PlumeShaderCache& cache = PlumeShaderCache::Instance();

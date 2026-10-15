@@ -14,10 +14,12 @@
  * @brief       Guest DRAW_INDX_2 → plume graphics pipeline (present thread).
  */
 #include "plume_renderer/plume_draw.h"
+#include "plume_renderer/plume_etc2_cache.h"
 #include "diagnostics.h"
 #include "plume_renderer/plume_parallel.h"
 
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <bit>
 #include <map>
@@ -314,7 +316,7 @@ bool DecodeCompressedForDump(rex::graphics::xenos::TextureFormat base_fmt,
 // ETC2 RGBA (EAC alpha) otherwise. *alpha comes in as the format chosen for the
 // texture's base level, or as -1 to choose it here: from the format, or for
 // BC1 from whether any texel is transparent. row_texels is the padded width.
-bool TranscodeBcToEtc2(rex::graphics::xenos::TextureFormat base_fmt,
+bool TranscodeBcToEtc2Uncached(rex::graphics::xenos::TextureFormat base_fmt,
                        const std::vector<uint8_t>& blocks, uint32_t block_row_bytes,
                        uint32_t width, uint32_t height, int* alpha, std::vector<uint8_t>* out,
                        uint32_t* row_texels) {
@@ -401,6 +403,30 @@ bool TranscodeBcToEtc2(rex::graphics::xenos::TextureFormat base_fmt,
     }
   });
   *row_texels = padded_w;
+  return true;
+}
+
+// TranscodeBcToEtc2Uncached through the ETC2 cache (plume_etc2_cache.h): the
+// same blocks read the same way are re-encoded once, and once a texture has
+// been seen in any run, never again on this device.
+bool TranscodeBcToEtc2(rex::graphics::xenos::TextureFormat base_fmt,
+                       const std::vector<uint8_t>& blocks, uint32_t block_row_bytes,
+                       uint32_t width, uint32_t height, int* alpha, std::vector<uint8_t>* out,
+                       uint32_t* row_texels) {
+  Etc2Cache& cache = Etc2Cache::Instance();
+  const uint64_t key = Etc2Cache::Key(uint32_t(base_fmt), blocks, block_row_bytes, width, height,
+                                      *alpha);
+  if (cache.Find(key, alpha, out, row_texels)) {
+    return true;
+  }
+  const auto start = std::chrono::steady_clock::now();
+  if (!TranscodeBcToEtc2Uncached(base_fmt, blocks, block_row_bytes, width, height, alpha, out,
+                                 row_texels)) {
+    return false;
+  }
+  cache.NoteMiss(
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+  cache.Store(key, *alpha, *out, *row_texels);
   return true;
 }
 
