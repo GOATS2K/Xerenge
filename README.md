@@ -5,6 +5,11 @@ PowerPC code is recompiled to C++ ahead of time and linked into an executable,
 with the console's hardware and operating system emulated around it. There is
 no CPU interpreter and no JIT.
 
+**Supported releases:** Burnout Revenge (Europe) and, since 0.4.7, Burnout
+Revenge (USA) - both officially, tested end to end: menus, races, Crash mode,
+replays, widescreen and the logo skip. Other dumps (the beta, other regions)
+are not.
+
 ## Getting it running
 
 You need a dump of the retail European or American release - the image
