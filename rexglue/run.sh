@@ -95,11 +95,14 @@
 #                       any shader, as it used to, instead of only what the
 #                       draw's shader reads (the default, a hack).
 #   ./run.sh --cull    plume culls the faces the title culls (experimental).
-#   ./run.sh --plume    loads librexgpu-plume.so instead of xenos, with the
-#                       switches it is meant to run with (as the installed
-#                       launcher sets them). Saved burnout.toml has
-#                       gpu_plugin=xenos, so --gpu_backend alone is ignored;
-#                       this flag sets gpu_plugin too.
+#   ./run.sh           runs on plume (librexgpu-plume.so), this project's
+#                       renderer, with the switches it is meant to run with
+#                       (as the installed launcher sets them); --plume is
+#                       accepted and changes nothing.
+#   ./run.sh --xenos    runs on xenos, Xenia's renderer, instead. Both set
+#                       gpu_plugin as well as gpu_backend: a saved
+#                       burnout.toml with gpu_plugin=xenos ignores
+#                       --gpu_backend alone.
 #   ./run.sh --verbose
 #                       every category (core, cpu, apu, gpu, krnl, sys, fs) at
 #                       spdlog trace level plus the noisy (per-frame) log
@@ -197,6 +200,7 @@ for arg in "$@"; do
         --verbose) LOGLEVEL=trace; NOISY=1; TRACE=1; MOVIE=1 ;;
         --log-level=*) LOGLEVEL=${arg#*=} ;;
         --plume)   GPU_BACKEND=plume ;;
+        --xenos)   GPU_BACKEND=xenos ;;
         --online)  ONLINE=1 ;;
         --real-lobby) ONLINE=1; REAL_LOBBY=1 ;;
         --lobby-server=*) ONLINE=1; REAL_LOBBY=1; LOBBY_SERVER=${arg#*=} ;;
@@ -221,7 +225,7 @@ for arg in "$@"; do
     esac
 done
 
-GPU_BACKEND=${GPU_BACKEND:-xenos}
+GPU_BACKEND=${GPU_BACKEND:-plume}
 
 # plume draws from the title's Direct3D calls, into real render targets, with
 # the translated shaders - the same switches the installed launcher sets. Any

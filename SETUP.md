@@ -142,7 +142,7 @@ million lines of C++, and all of it has to be compiled.
 Then:
 
 ```
-cd rexglue && ./run.sh --plume
+cd rexglue && ./run.sh
 ```
 
 or `./run.sh` alone for the xenos backend.
@@ -207,13 +207,13 @@ If a newer build of the title ever needs a shader the recipe does not cover,
 run under `rexglue/logs/`, so runs can be compared rather than overwriting each
 other. There are two renderers:
 
-* **plume** (`./run.sh --plume`) - this project's own. It takes the title's
+* **plume** (`./run.sh`, the default) - this project's own. It takes the title's
   Direct3D calls, draws with the shaders translated at build time, and keeps
-  the title's render targets as real host textures. `--plume` also sets the
+  the title's render targets as real host textures. run.sh also sets the
   switches it runs with (`XERENGE_D3D_TARGETS`, `XERENGE_D3D_UI`,
   `XERENGE_REAL_SHADERS`, `XERENGE_D3D_DRAWS`, `XERENGE_SECONDARY_TICKS`,
   `XERENGE_SKIP_LOGOS`), the same ones the installed launcher sets.
-* **xenos** (`./run.sh`) - ReXGlue's port of Xenia's GPU emulation, which
+* **xenos** (`./run.sh --xenos`) - ReXGlue's port of Xenia's GPU emulation, which
   translates shaders at runtime. Slower; the reference when plume draws
   something differently.
 
@@ -260,7 +260,7 @@ off.
 Useful modes:
 
 ```
-./run.sh --plume          draw with plume rather than xenos
+./run.sh --xenos          draw with xenos (Xenia's renderer) rather than plume
 ./run.sh --movie          trace the intro video path
 ./run.sh --trace          the SDK fork's GPU diagnostics; very verbose
 ./run.sh --no-bloom       turn off sky bloom and the low-resolution gaussian blur
@@ -389,7 +389,7 @@ textures and every constant buffer.
 ## Playing online
 
 EA's lobby servers are gone, so the online mode brings its own. Start the game with `--real-lobby`
-(`./run.sh --plume --real-lobby --gamertag=Name`). An installed copy sets this on the installer's **Network** tab:
+(`./run.sh --real-lobby --gamertag=Name`). An installed copy sets this on the installer's **Network** tab:
 the Gamertag, **Local multiplayer** (the mode below), and a **Server address** (prefilled with `94639.snk.wtf` on a new install; the self-hosted server below; with
 it set, local multiplayer is off). They are kept in `xerenge.conf` as `gamertag`, `online` and `lobby_server`.
 

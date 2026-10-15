@@ -38,7 +38,7 @@ installer made without them says so and installs the European disc only.
 
 ```
 ./scripts/bootstrap.sh /path/to/burnout-revenge.iso
-cd rexglue && ./run.sh --plume
+cd rexglue && ./run.sh
 ```
 
 The same works on a Mac, Apple silicon or Intel, and there is an installer app
@@ -99,13 +99,13 @@ has.
 
 **Two renderers.** `main` draws through either of two GPU plugins:
 
-* **plume** (`./run.sh --plume`, the installer's default) - this project's own,
+* **plume** (`./run.sh`, the default everywhere) - this project's own,
   in [`rexglue/src/plume_renderer/`](rexglue/src/plume_renderer/). It takes the
   title's Direct3D calls rather than emulating the command processor, draws with
   the shaders translated ahead of time, and keeps the title's render targets as
   real host textures. It spreads the frame's CPU work (texture checks, vertex
   unpacking) over up to eight worker threads.
-* **xenos** (`./run.sh`, the installer's "xenia render") - ReXGlue's port of
+* **xenos** (`./run.sh --xenos`, the installer's "xenia render") - ReXGlue's port of
   Xenia's GPU emulation, with shader translation at runtime. Slower, and the
   reference when plume draws something differently.
 
