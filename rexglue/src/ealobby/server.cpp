@@ -862,6 +862,25 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
   }
   if (message.command == "glea" || message.command == "gdel") {
     reply_with(Fields{});
+    // The host deleting its game ends it for everyone in it. Taken as the
+    // host leaving, the game went on with the next player as its host, alone
+    // in a game nobody else was in: a third player sat in "Returning from
+    // game" for good.
+    if (auto it = games_.find(connection.game);
+        message.command == "gdel" && it != games_.end() && it->second.host == connection.user) {
+      const std::vector<SocketHandle> others = it->second.players;
+      for (SocketHandle fd : others) {
+        Connection* player = ConnectionFor(fd);
+        if (!player || player == &connection) {
+          continue;
+        }
+        player->game = 0;
+        Send(*player, Encode("+mgm", Fields{{"IDENT", "0"}, {"NAME", ""}, {"HOST", ""}, {"COUNT", "0"}}));
+        SendWho(*player);
+      }
+      Log("lobby: game " + std::to_string(it->first) + " deleted by its host");
+      it->second.players.assign(1, connection.fd);
+    }
     LeaveGame(connection);
     Send(connection, Encode("+mgm", Fields{{"IDENT", "0"}, {"NAME", ""}, {"HOST", ""}, {"COUNT", "0"}}));
     SendWho(connection);
