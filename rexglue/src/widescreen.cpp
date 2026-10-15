@@ -67,9 +67,12 @@ float WideningFactor() {
   if (!text) {
     return 1.0f;
   }
+  // Any shape a window can be dragged to: a fixed range (it was 1.2 to 4)
+  // put the 16:9 scene back, stretched, on a window past either end. Only a
+  // value no window has is refused.
   const float aspect = std::strtof(text, nullptr);
-  const bool wider = aspect > kConsoleAspect * 1.01f && aspect < 4.0f;
-  const bool narrower = aspect < kConsoleAspect * 0.99f && aspect > 1.2f;
+  const bool wider = aspect > kConsoleAspect * 1.01f && aspect < 64.0f;
+  const bool narrower = aspect < kConsoleAspect * 0.99f && aspect > 1.0f / 64.0f;
   return wider || narrower ? aspect / kConsoleAspect : 1.0f;
 }
 

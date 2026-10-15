@@ -112,15 +112,41 @@ bool FixedAspect() {
   return fixed;
 }
 
-// The largest 16:9 rectangle inside the window, centred.
+// The shapes the scene is drawn in: 16:9 when kept so, otherwise from 1:1 to
+// 4:1 - widescreen.cpp widens or heightens the cameras to any of them, and
+// past either end the view grows towards 180 degrees and falls apart (a window
+// dragged to 223x720). A window of another shape gets black bars.
+void AspectLimits(double* least, double* most) {
+  *least = FixedAspect() ? 16.0 / 9.0 : 1.0;
+  *most = FixedAspect() ? 16.0 / 9.0 : 4.0;
+}
+
+// The largest rectangle of an allowed shape inside the window, centred: the
+// whole window when its own shape is allowed.
 plume::RenderRect AspectRect(uint32_t window_width, uint32_t window_height) {
-  uint32_t width = std::min(window_width, window_height * 16 / 9);
-  uint32_t height = width * 9 / 16;
+  double least, most;
+  AspectLimits(&least, &most);
+  const double aspect =
+      window_height ? std::clamp(double(window_width) / window_height, least, most) : most;
+  uint32_t width = std::min(window_width, uint32_t(window_height * aspect));
+  uint32_t height = std::min(window_height, uint32_t(width / aspect));
   width &= ~1u;
   height &= ~1u;
   const int32_t left = int32_t((window_width - width) / 2);
   const int32_t top = int32_t((window_height - height) / 2);
   return plume::RenderRect(left, top, left + int32_t(width), top + int32_t(height));
+}
+
+// Whether the window's shape is not one the scene is drawn in: the frame is
+// AspectRect's then, with black bars around it.
+bool Boxed(uint32_t window_width, uint32_t window_height) {
+  if (window_width == 0 || window_height == 0) {
+    return false;
+  }
+  double least, most;
+  AspectLimits(&least, &most);
+  const double aspect = double(window_width) / window_height;
+  return FixedAspect() || aspect < least * 0.995 || aspect > most * 1.005;
 }
 
 // The frame's own size for a window of this size: the window's, or the one
@@ -133,11 +159,20 @@ void FrameSize(uint32_t window_width, uint32_t window_height, uint32_t* width,
   uint32_t requested_width = 0;
   uint32_t requested_height = 0;
   RequestedRenderResolution(&requested_width, &requested_height);
-  if (FixedAspect() && requested_width == 0) {
-    // "The device's" resolution, kept 16:9: as much of the screen as that shape fills.
+  if (Boxed(window_width, window_height) && requested_width == 0) {
+    // "The device's" resolution in an allowed shape (16:9 when kept so): as
+    // much of the screen as that shape fills.
     const plume::RenderRect fit = AspectRect(window_width, window_height);
     requested_width = uint32_t(fit.right - fit.left);
     requested_height = uint32_t(fit.bottom - fit.top);
+  }
+  const uint32_t whole_width = window_width;
+  const uint32_t whole_height = window_height;
+  // A window past the allowed shapes is taken at the largest allowed one.
+  if (Boxed(whole_width, whole_height)) {
+    const plume::RenderRect fit = AspectRect(window_width, window_height);
+    window_width = uint32_t(fit.right - fit.left);
+    window_height = uint32_t(fit.bottom - fit.top);
   }
   // A screen wider than 16:9, not kept at 16:9: the frame takes the screen's
   // shape at the height asked for - widescreen.cpp widens the cameras to it
@@ -155,9 +190,9 @@ void FrameSize(uint32_t window_width, uint32_t window_height, uint32_t* width,
         uint32_t(uint64_t(requested_width) * window_height / window_width) & ~1u;
   }
   *scaled = scene_wanted && requested_width != 0 &&
-            (requested_width != window_width || requested_height != window_height);
-  *width = *scaled ? requested_width : window_width;
-  *height = *scaled ? requested_height : window_height;
+            (requested_width != whole_width || requested_height != whole_height);
+  *width = *scaled ? requested_width : whole_width;
+  *height = *scaled ? requested_height : whole_height;
 }
 
 // On Android the window's images can be smaller than the window: the system
@@ -1197,7 +1232,8 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
     // the window, filtered; at the window's own size it is a straight copy.
     if (width != window_width || height != window_height) {
       const plume::RenderRect letterbox = AspectRect(window_width, window_height);
-      if (!out->blitTexture(swapchain_texture, shown, true, FixedAspect() ? &letterbox : nullptr)) {
+      if (!out->blitTexture(swapchain_texture, shown, true,
+                              Boxed(window_width, window_height) ? &letterbox : nullptr)) {
         static bool warned = false;
         if (!warned) {
           warned = true;
