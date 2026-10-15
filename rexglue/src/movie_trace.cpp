@@ -88,9 +88,17 @@ bool NameIsStartupLogo(const char* name) {
   // The menu background must keep playing - it is the backdrop the interface
   // is drawn over, not an intro. The attract clip is skippable in-game, but
   // skipping it by hand every launch is the same waste of time as the logos.
-  static const char* const kLogos[] = {"EAHD_E_P", "EA_E_P", "CRRW_E_P", "ATTR_P"};
+  // Each is named for its video standard: _P on the European disc, _N on the
+  // American one (EAHD_E_P, EAHD_E_N), whose Criterion logo is CRRW_N rather
+  // than CRRW_E_P.
+  static const char* const kLogos[] = {"EAHD_E", "EA_E", "CRRW_E", "CRRW", "ATTR"};
+  const size_t length = std::strlen(name);
+  if (length < 2 || name[length - 2] != '_' ||
+      (name[length - 1] != 'P' && name[length - 1] != 'N')) {
+    return false;
+  }
   for (const char* logo : kLogos) {
-    if (std::strcmp(name, logo) == 0) {
+    if (std::strlen(logo) == length - 2 && std::strncmp(name, logo, length - 2) == 0) {
       return true;
     }
   }
