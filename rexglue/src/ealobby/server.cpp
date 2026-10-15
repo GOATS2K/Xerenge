@@ -1042,7 +1042,12 @@ Fields Server::GameRecord(const Game& game, const Connection& to) const {
     record["PRES" + n] = "0";
   }
   record["COUNT"] = std::to_string(count);
-  record["NUMPART"] = std::to_string(count);
+  // NUMPART is not the players: it counts the record's other list, read
+  // into 40-byte slots from game record+448 (LobbyApi, 0x82411A58), and a third
+  // slot lands on COUNT (+524). NUMPART=3 zeroed the count, the host no longer
+  // found itself in its own game and ended it: everyone left as the third
+  // player joined.
+  record["NUMPART"] = "0";
   return record;
 }
 
@@ -1171,7 +1176,7 @@ void Server::Announce() {
     shown.players = {game.players.front()};
     Fields record = GameRecord(shown, *host);
     record["COUNT"] = std::to_string(game.players.size());
-    record["NUMPART"] = std::to_string(game.players.size());
+    record["NUMPART"] = "0";  // not the players (GameRecord)
     record.erase("SELF");
     const std::string datagram = std::string(kGameBeacon) + options_.self_address + " " +
                                  std::to_string(id) + " " + Hex(FormatFields(record));

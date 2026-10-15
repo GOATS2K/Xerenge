@@ -63,6 +63,7 @@ extern "C" void __imp__sub_8240F650(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_8240EAD8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_824095D8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_8240D398(PPCContext& __restrict, uint8_t*);
+extern "C" void __imp__sub_82411A58(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_8240C908(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_82366CF8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_82587A88(PPCContext& __restrict, uint8_t*);
@@ -575,6 +576,39 @@ REX_HOOK_RAW(sub_824095D8) {
   __imp__sub_824095D8(ctx, base);
 }
 
+
+// LobbyApi's game record from its text (record, text): the text's length as
+// it reaches the parser, and the players it took out of it - the count at
+// record+524, the names from record+536, 140 bytes apart. A host that does
+// not find itself among them ends the game.
+REX_HOOK_RAW(sub_82411A58) {
+  const uint32_t record = ctx.r3.u32;
+  const uint32_t text = ctx.r4.u32;
+  size_t length = 0;
+  if (Online() && text) {
+    while (length < 8192 && *xerenge::GuestPointer(base, text + uint32_t(length)) != 0) {
+      ++length;
+    }
+  }
+  __imp__sub_82411A58(ctx, base);
+  if (Online() && record) {
+    const uint32_t count = xerenge::LoadGuestU32(base, record + 524);
+    std::string players;
+    for (uint32_t i = 0; i < count && i < 8; ++i) {
+      std::string name;
+      for (uint32_t j = 0; j < 16; ++j) {
+        const char c = char(*xerenge::GuestPointer(base, record + 536 + i * 140 + j));
+        if (c == 0) {
+          break;
+        }
+        name += (c >= 32 && c < 127) ? c : '?';
+      }
+      players += " \"" + name + "\"";
+    }
+    REXLOG_INFO("--online: game record parsed from {} byte(s) of text: count {}, players{}",
+                length, int32_t(count), players);
+  }
+}
 // ProtoMangleControl(ref, selector, value, value2, pointer): how the game's
 // net layer tells DirtySock's session code about a game - 'host' (the host's
 // XUID, 8 bytes at ref+0x70), 'suid', 'sess' (create the Xbox Live session)
@@ -600,9 +634,26 @@ REX_HOOK_RAW(sub_8240D398) {
         text += (c >= 32 && c < 127) ? char(c) : '?';
       }
     }
-    REXLOG_INFO("--online: ProtoMangleControl '{}' value {} value2 {} pointer {:08X}{}", name,
+    // Who asked, for 'stop': the return address and the guest's saved ones up
+    // the back chain (each frame's word 0 the caller's frame, the return
+    // address 8 below it) - the game ends a session there, and why it did is
+    // a few calls up.
+    std::string callers;
+    if (selector == 0x73746F70u) {
+      callers = fmt::format(" from {:08X}", uint32_t(ctx.lr));
+      uint32_t frame = ctx.r1.u32;
+      for (int i = 0; i < 8 && frame >= 0x10000 && frame < 0xF0000000u; ++i) {
+        const uint32_t next = xerenge::LoadGuestU32(base, frame);
+        if (next <= frame || next >= 0xF0000000u) {
+          break;
+        }
+        callers += fmt::format(" < {:08X}", xerenge::LoadGuestU32(base, next - 8));
+        frame = next;
+      }
+    }
+    REXLOG_INFO("--online: ProtoMangleControl '{}' value {} value2 {} pointer {:08X}{}{}", name,
                 int32_t(ctx.r5.u32), int32_t(ctx.r6.u32), pointer,
-                text.empty() ? std::string() : " \"" + text + "\"");
+                text.empty() ? std::string() : " \"" + text + "\"", callers);
   }
   __imp__sub_8240D398(ctx, base);
 }
@@ -839,12 +890,15 @@ REX_HOOK_RAW(sub_825BF2B8) {
 }
 
 // The socket layer redirects every destination to the lobby host (a 0/0 entry in the game's
-// address table). Traffic to the peers' own ports has to reach the peer itself.
+// address table). Traffic between the players has to reach the player itself: not only their
+// fixed ports (8192, 6000) - a third player's connections to the two already in the game run
+// from ports the system chose, and redirected they went to this copy's own lobby. Only the
+// lobby's ports (31859-31861) keep the redirect.
 REX_HOOK_RAW(sub_82415E48) {
   if (Online()) {
     const uint8_t* to = xerenge::GuestPointer(static_cast<const uint8_t*>(base), ctx.r4.u32);
     const uint32_t port = (uint32_t(to[2]) << 8) | to[3];
-    if (port == 8192 || port == 6000) {
+    if (port < 31859 || port > 31861) {
       ctx.r3.u32 = ctx.r4.u32;
       return;
     }
