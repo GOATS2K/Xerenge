@@ -12,14 +12,29 @@
 // 7 Korean, 8 Chinese, 9 Portuguese. The PAL disc's others (Dutch, Swedish,
 // Finnish) are not in that table; SetLanguage logs the value it is given, so
 // choosing one on the screen once says its number.
+//
+// Each language is a pair of string files on the disc, Language/Strings/
+// Main<suffix>.bin and Cred<suffix>.bin, the suffix from the table at
+// 0x82012FA0. The American disc carries only English (US)'s, and the title
+// stops on a disc read error when a language's file is missing, so a preset
+// whose file this disc does not have is left out, and the title chooses as it
+// would have without one.
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <iterator>
+#include <string>
+#include <system_error>
 
+#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/ppc.h>
 
 #include "guest_memory.h"
+
+REXCVAR_DECLARE(std::string, game_data_root);
 
 extern "C" void __imp__sub_8210D8F0(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_8210FA20(PPCContext& __restrict, uint8_t*);
@@ -40,13 +55,72 @@ int PresetLanguage() {
   return language;
 }
 
+bool SameName(const std::string& a, const std::string& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (std::tolower(static_cast<unsigned char>(a[i])) !=
+        std::tolower(static_cast<unsigned char>(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The entry of directory named name, whatever its case: the extracted disc
+// keeps the case of its directory records, which is not the one the title
+// asks for (language/strings/MainUS.bin for Language\Strings\MainUS.bin).
+std::filesystem::path Find(const std::filesystem::path& directory, const std::string& name) {
+  std::error_code error;
+  for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
+    if (SameName(entry.path().filename().string(), name)) {
+      return entry.path();
+    }
+  }
+  return {};
+}
+
+// Whether this copy of the disc has the string file of language n.
+bool DiscHasLanguage(int language) {
+  static const char* const kSuffixes[] = {"UK", "US", "Ja", "Ge", "Fr", "Sp", "It",
+                                          "Ko", "US", "US", "Du", "Sw", "Fi", "Da"};
+  if (language >= int(std::size(kSuffixes))) {
+    return false;
+  }
+  const std::string root = REXCVAR_GET(game_data_root);
+  if (root.empty()) {
+    return true;  // nowhere to look; as before
+  }
+  std::filesystem::path strings = Find(root, "Language");
+  if (!strings.empty()) {
+    strings = Find(strings, "Strings");
+  }
+  return !strings.empty() &&
+         !Find(strings, std::string("Main") + kSuffixes[language] + ".bin").empty();
+}
+
+// The preset, if this disc has it; -1 otherwise.
+int UsablePresetLanguage() {
+  static const int language = [] {
+    const int preset = PresetLanguage();
+    if (preset >= 0 && !DiscHasLanguage(preset)) {
+      REXLOG_WARN("language: preset {} (XERENGE_LANGUAGE) is not on this disc; left to the title",
+                  preset);
+      return -1;
+    }
+    return preset;
+  }();
+  return language;
+}
+
 }  // namespace
 
 // CB4GamertagManager::CheckForStoredLanguage(this) -> bool.
 REX_HOOK_RAW(sub_8210D8F0) {
   const uint32_t manager = ctx.r3.u32;
   __imp__sub_8210D8F0(ctx, base);
-  const int language = PresetLanguage();
+  const int language = UsablePresetLanguage();
   if (language < 0 || manager == 0) {
     return;
   }

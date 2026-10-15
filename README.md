@@ -7,9 +7,12 @@ no CPU interpreter and no JIT.
 
 ## Getting it running
 
-You need a dump of the retail European release - the image hashing to
-`34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4` - and a
-machine with Vulkan.
+You need a dump of the retail European or American release - the image
+hashing to `34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4`
+(Europe) or `7abf689f52b70666ba92052bd157cfcae9ed6290dae298fbf639baa1d169f92b`
+(USA) - and a machine with Vulkan. The two are not the same build (the
+territory is compiled into the code), so each gets a game generated from its
+own `default.xex`; SETUP.md has the detail.
 
 **With the installer.** `Burnout_Revenge_Installer-x86_64.AppImage` asks for the
 disc image, the install directory and three settings (bloom, motion blur, and
@@ -20,7 +23,10 @@ applications menu entry. Nothing from the game is downloaded - it is all made
 from your disc, on your machine. The settings land in `xerenge.conf` in the
 install directory and are read at every start, so they can be changed there
 later. To build the AppImage yourself: `rexglue/installer/make-appimage.sh`
-(needs Qt 6, linuxdeploy and linuxdeploy-plugin-qt).
+(needs Qt 6, linuxdeploy and linuxdeploy-plugin-qt). For the American disc the
+installer takes the game from its payload's `usa/`, which CI builds when its
+assets carry the American release's files (`game-usa/`); an installer made
+without them says so and installs the European disc only.
 
 **By hand.**
 

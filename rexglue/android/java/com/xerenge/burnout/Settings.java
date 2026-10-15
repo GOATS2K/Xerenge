@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -110,6 +111,38 @@ final class Settings {
 
     static File gameDir(Context context) {
         return new File(root(context), "game");
+    }
+
+    /**
+     * The American release's default.xex. Its code lies where the European
+     * one's does, but the territory it was built for is compiled into it - the
+     * language, the PAL or NTSC videos - so it has a build of its own,
+     * libmain_usa.so beside libmain.so.
+     */
+    static final String USA_XEX_SHA256 =
+            "5258c75d9ae649ed4fb71d4e2fe8808545db16092cfe764ea1a2504f5aae2e2d";
+
+    /** Whether the extracted game is the American release. */
+    static boolean usaGame(Context context) {
+        try (FileInputStream in = new FileInputStream(new File(gameDir(context), "default.xex"))) {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            byte[] chunk = new byte[1 << 20];
+            for (int got; (got = in.read(chunk)) > 0; ) {
+                sha.update(chunk, 0, got);
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : sha.digest()) {
+                hex.append(String.format("%02x", b & 0xff));
+            }
+            return USA_XEX_SHA256.contentEquals(hex);
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    /** The game's library for the extracted release: "main" or "main_usa". */
+    static String gameLibrary(Context context) {
+        return usaGame(context) ? "main_usa" : "main";
     }
 
     static boolean installed(Context context) {

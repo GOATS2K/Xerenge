@@ -29,9 +29,13 @@ set(BURNOUT_SOURCES
 if(WIN32)
     add_executable(burnout WIN32 ${BURNOUT_SOURCES})
 elseif(ANDROID)
-    # SDLActivity loads the game as libmain.so and calls its SDL_main.
+    # SDLActivity loads the game as libmain.so and calls its SDL_main. The
+    # game generated from the American release's default.xex is built as
+    # libmain_usa.so instead (-DBURNOUT_ANDROID_LIBRARY=main_usa), packed into
+    # the same APK, and loaded when the extracted disc is that release.
+    set(BURNOUT_ANDROID_LIBRARY main CACHE STRING "The game's library name, without lib and .so")
     add_library(burnout SHARED ${BURNOUT_SOURCES} src/android_touch.cpp src/android_vibration.cpp)
-    set_target_properties(burnout PROPERTIES OUTPUT_NAME main)
+    set_target_properties(burnout PROPERTIES OUTPUT_NAME ${BURNOUT_ANDROID_LIBRARY})
 else()
     add_executable(burnout ${BURNOUT_SOURCES})
 endif()

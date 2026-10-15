@@ -8,6 +8,9 @@ name: Build
 #
 # The payload the installer carries:
 #   bin/     the game and the libraries beside it
+#   usa/     the game built from the American release's default.xex, which
+#            the installer puts in bin/'s place for that disc - when the
+#            assets carry it, in game-usa/ beside game/
 #   tools/   extract-image, which checks and unpacks the player's disc image
 on:
   push:
@@ -127,6 +130,21 @@ jobs:
           find rexglue/build rexglue-sdk/out/linux-amd64 -maxdepth 2 -name '*.so*' -not -path '*/Debug/*' -exec cp -a {} "$payload/bin/" \;
           cp tools/bin/extract-image "$payload/tools/"
           ls -laR "$payload"
+
+      # The American release: its code lies where the European one's does, but
+      # the territory it was built for is compiled into it, so it is generated
+      # and built again from its own default.xex, into the payload's usa/ (the
+      # installer takes the game from there for that disc; the libraries in
+      # bin/ are the same for both). Built when the assets carry game-usa/.
+      - name: Build the game for the American release
+        run: |
+          if [ ! -f "$RUNNER_TEMP/assets/game-usa/default.xex" ]; then
+            echo "::warning::the assets have no game-usa/: this installer carries the European build only"
+            exit 0
+          fi
+          ./scripts/build.sh --game "$RUNNER_TEMP/assets/game-usa"
+          mkdir -p "$RUNNER_TEMP/payload/usa"
+          cp rexglue/build/burnout "$RUNNER_TEMP/payload/usa/"
 
       - name: Installer AppImage
         env:
@@ -255,6 +273,21 @@ jobs:
           windeployqt --release --no-translations "$package/xerenge-installer.exe"
           ls -laR "$package"
 
+      # The American release: its code lies where the European one's does, but
+      # the territory it was built for is compiled into it, so it is generated
+      # and built again from its own default.xex, into the payload's usa/ (the
+      # installer takes the game from there for that disc; the libraries in
+      # bin/ are the same for both). Built when the assets carry game-usa/.
+      - name: Build the game for the American release
+        run: |
+          if [ ! -f "../xerenge-assets/game-usa/default.xex" ]; then
+            echo "::warning::the assets have no game-usa/: this installer carries the European build only"
+            exit 0
+          fi
+          ./scripts/build.sh --game "../xerenge-assets/game-usa"
+          mkdir -p "$(cygpath -u "$RUNNER_TEMP")/package/payload/usa"
+          cp rexglue/build/burnout.exe "$(cygpath -u "$RUNNER_TEMP")/package/payload/usa/"
+
       # One .exe: an Inno Setup wrapper that unpacks the package to a
       # temporary folder and runs the installer from it.
       - name: Installer .exe
@@ -380,6 +413,25 @@ jobs:
             -DREXGLUE_CODEGEN="$PWD/rexglue-sdk/out/linux-amd64/Release/rexglue"
           cmake --build rexglue/build-android -j"$(nproc)"
 
+      # The American release, as in linux-amd64: generated again from its own
+      # default.xex and built as libmain_usa.so, which build-android-apk.sh
+      # packs beside libmain.so. Built when the assets carry game-usa/.
+      - name: Build for Android, the American release
+        run: |
+          if [ ! -f "$RUNNER_TEMP/assets/game-usa/default.xex" ]; then
+            echo "::warning::the assets have no game-usa/: this APK carries the European build only"
+            exit 0
+          fi
+          ./scripts/build.sh --game "$RUNNER_TEMP/assets/game-usa" --generate-only
+          cmake -S rexglue -B rexglue/build-android-usa -G Ninja \
+            -DREXSDK_DIR="$PWD/rexglue-sdk" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_shared \
+            -DREXGLUE_ARM64_MARCH=armv8-a "-DCMAKE_C_FLAGS=-march=armv8-a -moutline-atomics" "-DCMAKE_CXX_FLAGS=-march=armv8-a -moutline-atomics" \
+            -DREXGLUE_CODEGEN="$PWD/rexglue-sdk/out/linux-amd64/Release/rexglue" \
+            -DBURNOUT_ANDROID_LIBRARY=main_usa
+          cmake --build rexglue/build-android-usa -j"$(nproc)" --target burnout
+
       - name: sccache stats
         if: always()
         run: sccache --show-stats || true
@@ -491,6 +543,21 @@ jobs:
           cp tools/bin/extract-image "$payload/tools/"
           ls -laR "$payload"
 
+      # The American release: its code lies where the European one's does, but
+      # the territory it was built for is compiled into it, so it is generated
+      # and built again from its own default.xex, into the payload's usa/ (the
+      # installer takes the game from there for that disc; the libraries in
+      # bin/ are the same for both). Built when the assets carry game-usa/.
+      - name: Build the game for the American release
+        run: |
+          if [ ! -f "$RUNNER_TEMP/assets/game-usa/default.xex" ]; then
+            echo "::warning::the assets have no game-usa/: this installer carries the European build only"
+            exit 0
+          fi
+          ./scripts/build.sh --game "$RUNNER_TEMP/assets/game-usa"
+          mkdir -p "$RUNNER_TEMP/payload/usa"
+          cp rexglue/build/burnout "$RUNNER_TEMP/payload/usa/"
+
       - name: Installer app
         run: |
           XERENGE_PAYLOAD="$RUNNER_TEMP/payload" ./rexglue/installer/make-macos-app.sh
@@ -594,6 +661,21 @@ jobs:
           cp tools/bin/extract-image "$payload/tools/"
           ls -laR "$payload"
 
+      # The American release: its code lies where the European one's does, but
+      # the territory it was built for is compiled into it, so it is generated
+      # and built again from its own default.xex, into the payload's usa/ (the
+      # installer takes the game from there for that disc; the libraries in
+      # bin/ are the same for both). Built when the assets carry game-usa/.
+      - name: Build the game for the American release
+        run: |
+          if [ ! -f "$RUNNER_TEMP/assets/game-usa/default.xex" ]; then
+            echo "::warning::the assets have no game-usa/: this installer carries the European build only"
+            exit 0
+          fi
+          ./scripts/build.sh --game "$RUNNER_TEMP/assets/game-usa"
+          mkdir -p "$RUNNER_TEMP/payload/usa"
+          cp rexglue/build/burnout "$RUNNER_TEMP/payload/usa/"
+
       - name: Installer app
         run: |
           XERENGE_PAYLOAD="$RUNNER_TEMP/payload" ./rexglue/installer/make-macos-app.sh
@@ -691,7 +773,7 @@ jobs:
         run: |
           ls -la artifacts
           cat > notes.md <<'EOF'
-          The game comes built: the installer only needs your own Burnout Revenge disc image (PAL, see `SETUP.md`).
+          The game comes built: the installer only needs your own Burnout Revenge disc image (the European or the American release, see `SETUP.md`).
 
           **Windows:** download `Burnout_Revenge_Installer-win-amd64.exe` and run it.
 

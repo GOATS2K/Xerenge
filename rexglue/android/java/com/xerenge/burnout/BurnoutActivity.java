@@ -152,8 +152,9 @@ public class BurnoutActivity extends SDLActivity {
     @Override
     protected String[] getLibraries() {
         // SDL itself is linked into librexruntime.so, which libmain.so needs;
-        // libc++_shared.so first, as both of them do.
-        return new String[] { "c++_shared", "rexruntime", "main" };
+        // libc++_shared.so first, as both of them do. The American release
+        // has a game of its own, libmain_usa.so.
+        return new String[] { "c++_shared", "rexruntime", Settings.gameLibrary(this) };
     }
 
     @Override

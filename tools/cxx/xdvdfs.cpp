@@ -86,8 +86,17 @@ void CopyFile(XdvdfsImage& image, uint32_t start, uint64_t length, const std::st
         if (got <= 0) {
             throw std::runtime_error("the image ends partway through " + destination);
         }
-        out.write(chunk.data(), got);
+        // A full disk fails here, or at the close below, without a word unless
+        // asked: the extraction went on and left the files it could not write
+        // empty - default.xex among them.
+        if (!out.write(chunk.data(), got)) {
+            throw std::runtime_error("cannot write " + destination + " (is the disk full?)");
+        }
         remaining -= static_cast<uint64_t>(got);
+    }
+    out.close();
+    if (!out) {
+        throw std::runtime_error("cannot write " + destination + " (is the disk full?)");
     }
 }
 

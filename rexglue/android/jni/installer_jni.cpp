@@ -1,5 +1,5 @@
 // The native half of the Android installer (libxerenge_installer.so): checks
-// the disc image against the retail hash and extracts it, with the same code
+// the disc image against the retail hashes and extracts it, with the same code
 // the desktop installer's extract-image runs (tools/cxx). Kept apart from the
 // game so the installer does not load 60 MB of recompiled code.
 //
@@ -21,8 +21,13 @@
 
 namespace {
 
-constexpr const char* kRetailSha256 =
+// Burnout Revenge (Europe) and Burnout Revenge (USA), and the files each holds.
+constexpr const char* kRetailSha256Europe =
     "34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4";
+constexpr const char* kRetailSha256Usa =
+    "7abf689f52b70666ba92052bd157cfcae9ed6290dae298fbf639baa1d169f92b";
+constexpr int64_t kImageFilesEurope = 832;
+constexpr int64_t kImageFilesUsa = 803;
 
 std::string ToHex(const uint8_t digest[32]) {
   static const char hex[] = "0123456789abcdef";
@@ -44,7 +49,8 @@ std::string FromJava(JNIEnv* env, jstring text) {
 }
 
 // progress.onProgress(int phase, long done, long total): phase 0 checking,
-// 1 extracting (done = files, total = bytes so far).
+// 1 extracting (done = files, total = bytes so far), 2 once the image is
+// known (done = the files it holds).
 struct Progress {
   JNIEnv* env;
   jobject target;
@@ -84,9 +90,15 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_xerenge_burnout_InstallerActivity_
       }
       uint8_t digest[32];
       hash.Final(digest);
-      if (ToHex(digest) != kRetailSha256) {
+      const std::string hex = ToHex(digest);
+      if (hex == kRetailSha256Europe) {
+        progress.Report(2, kImageFilesEurope, 0);
+      } else if (hex == kRetailSha256Usa) {
+        progress.Report(2, kImageFilesUsa, 0);
+      } else {
         return env->NewStringUTF(
-            "this is not the retail Burnout Revenge disc image (the checksum does not match)");
+            "this is not a retail Burnout Revenge disc image, European or American (the checksum "
+            "does not match)");
       }
     }
     XdvdfsImage xdvdfs{static_cast<int>(fd)};
