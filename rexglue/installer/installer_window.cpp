@@ -43,18 +43,18 @@ namespace {
 // The two retail images the recompiled code is made from (see SETUP.md):
 // Burnout Revenge (Europe) and Burnout Revenge (USA), and the files
 // extract-image writes for each, for its progress.
-constexpr const char* kRetailSha256Europe =
+constexpr const char* kRetailSha256Eu =
     "34c1bd4d549c2c53f29d814fa5e5d1c04c533c5ca0c39e57b6c2538f44ff59b4";
-constexpr const char* kRetailSha256Usa =
+constexpr const char* kRetailSha256Us =
     "7abf689f52b70666ba92052bd157cfcae9ed6290dae298fbf639baa1d169f92b";
-constexpr int kImageFilesEurope = 832;
-constexpr int kImageFilesUsa = 803;
+constexpr int kImageFilesEu = 832;
+constexpr int kImageFilesUs = 803;
 // The American image's default.xex. Its code lies where the European one's
 // does, but the territory it was built for is compiled into it - the language,
-// the PAL or NTSC videos - so it gets a build of its own: the payload's usa/
-// beside bin/. Told apart by this file rather than the image, so that an
+// the PAL or NTSC videos - so it gets a build of its own: the payload's
+// bin/burnout_us beside bin/burnout_eu. Told apart by this file rather than the image, so that an
 // installation whose image is already extracted is told apart as well.
-constexpr const char* kUsaXexSha256 =
+constexpr const char* kXexSha256Us =
     "5258c75d9ae649ed4fb71d4e2fe8808545db16092cfe764ea1a2504f5aae2e2d";
 
 constexpr const char* kDesktopId = "xerenge-burnout-revenge.desktop";
@@ -1069,7 +1069,7 @@ bool InstallerWindow::LocatePayload(QString* error) {
   candidates.append(here.filePath("../Resources/payload"));
   payload_dir_.clear();
   for (const QString& candidate : candidates) {
-    if (QFileInfo::exists(QDir(candidate).filePath(QString("bin/burnout") + kExe))) {
+    if (QFileInfo::exists(QDir(candidate).filePath(QString("bin/burnout_eu") + kExe))) {
       payload_dir_ = QDir(candidate).absolutePath();
       return true;
     }
@@ -1207,17 +1207,17 @@ void InstallerWindow::StartInstall() {
                        StepFinished(tr("%1 is missing").arg(extract_tool));
                        return;
                      }
-                     auto image_files = std::make_shared<int>(kImageFilesEurope);
+                     auto image_files = std::make_shared<int>(kImageFilesEu);
                      RunProcess(extract_tool,
-                                {"--sha256", kRetailSha256Europe, "--sha256", kRetailSha256Usa,
+                                {"--sha256", kRetailSha256Eu, "--sha256", kRetailSha256Us,
                                  image_path_, game_dir},
                                 [this, checking, written, image_files](const QString& line) {
                                   if (auto m = checking.match(line); m.hasMatch()) {
                                     SetStepProgress(0.5 * m.captured(1).toInt() / 100.0);
                                     SetStatus(tr("Checking the disc image: %1%")
                                                   .arg(m.captured(1)));
-                                  } else if (line.contains(kRetailSha256Usa)) {
-                                    *image_files = kImageFilesUsa;
+                                  } else if (line.contains(kRetailSha256Us)) {
+                                    *image_files = kImageFilesUs;
                                   } else if (auto w = written.match(line); w.hasMatch()) {
                                     const int files = w.captured(1).toInt();
                                     const int total = *image_files;
@@ -1234,7 +1234,7 @@ void InstallerWindow::StartInstall() {
                    if (!log_path_.isEmpty()) {
                      QFile log(log_path_);
                      if (log.open(QIODevice::Append | QIODevice::Text)) {
-                       const bool usa = IsUsaGame(QDir(install_dir_).filePath("game"));
+                       const bool usa = IsUsGame(QDir(install_dir_).filePath("game"));
                        log.write(QString("\ncopying the game built for the %1 release\n")
                                      .arg(usa ? "American" : "European")
                                      .toUtf8());
@@ -1382,40 +1382,49 @@ void InstallerWindow::RunInBackground(std::function<QString(std::function<void(d
 // the GPU plugins beside it (the SDK looks for them there) - as the payload's
 // bin/ has them.
 //
-// For the American release the game itself comes from the payload's usa/
-// instead, the libraries staying those of bin/: they are the SDK's, and the
-// same for both.
+// The payload carries the game twice, burnout_eu and burnout_us - built from
+// the European and the American default.xex; the one for the extracted disc
+// is installed as bin/burnout, the other is left out. The libraries are the
+// SDK's, and the same for both.
 QString InstallerWindow::CopyRuntime(const std::function<void(double)>& progress) const {
   const QDir from(QDir(payload_dir_).filePath("bin"));
   const QDir to(QDir(install_dir_).filePath("bin"));
   const QString game = QString("burnout") + kExe;
-  const bool usa = IsUsaGame(QDir(install_dir_).filePath("game"));
-  const QString usa_game = QDir(payload_dir_).filePath(QString("usa/") + game);
-  if (usa && !QFileInfo::exists(usa_game)) {
+  const QString game_eu = QString("burnout_eu") + kExe;
+  const QString game_us = QString("burnout_us") + kExe;
+  const bool us = IsUsGame(QDir(install_dir_).filePath("game"));
+  const QString chosen = from.filePath(us ? game_us : game_eu);
+  if (us && !QFileInfo::exists(chosen)) {
     return tr("the disc is the American release, and this installer carries the game built "
               "for the European one only (%1 is missing)")
-        .arg(usa_game);
+        .arg(chosen);
   }
   const QStringList files = FilesUnder(from.absolutePath());
   if (files.isEmpty()) {
     return tr("%1 is empty").arg(from.absolutePath());
   }
   for (int i = 0; i < files.size(); ++i) {
+    if (files[i] == game_eu || files[i] == game_us) {
+      continue;
+    }
     const QString target = to.filePath(files[i]);
     if (!QDir().mkpath(QFileInfo(target).absolutePath())) {
       return tr("cannot create directories in %1").arg(install_dir_);
     }
-    const QString source = usa && files[i] == game ? usa_game : from.filePath(files[i]);
+    const QString source = from.filePath(files[i]);
     if (const QString error = CopyFile(source, target); !error.isEmpty()) {
       return error;
     }
     progress(double(i + 1) / files.size());
   }
-  return {};
+  if (!QDir().mkpath(to.absolutePath())) {
+    return tr("cannot create directories in %1").arg(install_dir_);
+  }
+  return CopyFile(chosen, to.filePath(game));
 }
 
 // Whether the extracted game is the American release, by its default.xex.
-bool InstallerWindow::IsUsaGame(const QString& game_dir) {
+bool InstallerWindow::IsUsGame(const QString& game_dir) {
   QFile xex(QDir(game_dir).filePath("default.xex"));
   if (!xex.open(QIODevice::ReadOnly)) {
     return false;
@@ -1424,7 +1433,7 @@ bool InstallerWindow::IsUsaGame(const QString& game_dir) {
   if (!hash.addData(&xex)) {
     return false;
   }
-  return hash.result().toHex() == kUsaXexSha256;
+  return hash.result().toHex() == kXexSha256Us;
 }
 
 QString InstallerWindow::WriteSettings() const {

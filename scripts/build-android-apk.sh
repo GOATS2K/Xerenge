@@ -10,9 +10,9 @@
 # ANDROID_NDK_HOME (default /opt/android-ndk) gives libc++_shared.so.
 # VALIDATION_LAYER, the path to an arm64 libVkLayer_khronos_validation.so, packs
 # Khronos' validation layer in too (switched on by env.PLUME_VALIDATION = 1).
-# rexglue/build-android-usa/libmain_usa.so, when it is there, is packed in as
+# rexglue/build-android-us/libmain_us.so, when it is there, is packed in as
 # well: the game built from the American release's default.xex, which the app
-# loads instead of libmain.so when the extracted disc is that release.
+# loads instead of libmain_eu.so when the extracted disc is that release.
 # DEBUGGABLE=1 marks the app debuggable: what the GPU vendor's Perfetto counters
 # (debug.graphics.gpu.profiler.perfetto) need on a phone that is not rooted.
 set -e
@@ -52,7 +52,7 @@ javac -nowarn -Xlint:none -source 17 -target 17 -encoding UTF-8 \
     $(find "$out/classes" -name '*.class')
 
 echo "== native libraries"
-for lib in "$build/libmain.so" "$build/librexgpu-plume.so" "$runtime_libs/librexruntime.so" \
+for lib in "$build/libmain_eu.so" "$build/librexgpu-plume.so" "$runtime_libs/librexruntime.so" \
            "$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"; do
     [ -f "$lib" ] || { echo "missing: $lib" >&2; exit 1; }
     cp "$lib" "$out/pack/lib/arm64-v8a/"
@@ -67,8 +67,8 @@ for lib in "$build/libxerenge_installer.so" \
     [ -f "$lib" ] || { echo "missing: $lib" >&2; exit 1; }
     cp "$lib" "$out/pack/lib/arm64-v8a/"
 done
-if [ -f "$project/build-android-usa/libmain_usa.so" ]; then
-    cp "$project/build-android-usa/libmain_usa.so" "$out/pack/lib/arm64-v8a/"
+if [ -f "$project/build-android-us/libmain_us.so" ]; then
+    cp "$project/build-android-us/libmain_us.so" "$out/pack/lib/arm64-v8a/"
 fi
 [ -f "$runtime_libs/libTracyClient.so" ] && cp "$runtime_libs/libTracyClient.so" "$out/pack/lib/arm64-v8a/"
 if [ -n "$VALIDATION_LAYER" ]; then

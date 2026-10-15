@@ -64,7 +64,7 @@ class InstallerWindow : public QWidget {
 
   bool LocatePayload(QString* error);
   QString CopyRuntime(const std::function<void(double)>& progress) const;
-  static bool IsUsaGame(const QString& game_dir);
+  static bool IsUsGame(const QString& game_dir);
   QString WriteSettings() const;
   QString CreateShortcuts() const;
 

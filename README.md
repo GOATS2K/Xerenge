@@ -23,10 +23,11 @@ applications menu entry. Nothing from the game is downloaded - it is all made
 from your disc, on your machine. The settings land in `xerenge.conf` in the
 install directory and are read at every start, so they can be changed there
 later. To build the AppImage yourself: `rexglue/installer/make-appimage.sh`
-(needs Qt 6, linuxdeploy and linuxdeploy-plugin-qt). For the American disc the
-installer takes the game from its payload's `usa/`, which CI builds when its
-assets carry the American release's files (`game-usa/`); an installer made
-without them says so and installs the European disc only.
+(needs Qt 6, linuxdeploy and linuxdeploy-plugin-qt). The payload carries the
+game twice, `bin/burnout_eu` and `bin/burnout_us`, and the installer installs
+the one for your disc as `bin/burnout`. CI builds the American one when its
+assets carry the American release's files (`game_us/` beside `game_eu/`); an
+installer made without them says so and installs the European disc only.
 
 **By hand.**
 

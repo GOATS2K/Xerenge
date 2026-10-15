@@ -13,8 +13,8 @@ set -e
 here=$(cd "$(dirname "$0")" && pwd)
 build="$here/build-macos"
 payload=${XERENGE_PAYLOAD:?name the built game with XERENGE_PAYLOAD=<dir>}
-if [ ! -x "$payload/bin/burnout" ] || [ ! -x "$payload/tools/extract-image" ]; then
-    echo "$payload needs bin/burnout and tools/extract-image" >&2
+if [ ! -x "$payload/bin/burnout_eu" ] || [ ! -x "$payload/tools/extract-image" ]; then
+    echo "$payload needs bin/burnout_eu and tools/extract-image" >&2
     exit 1
 fi
 if [ ! -f "$payload/bin/vulkan/share/vulkan/icd.d/MoltenVK_icd.json" ]; then

@@ -11,7 +11,7 @@ import java.io.File;
 import org.libsdl.app.SDLActivity;
 
 /**
- * The game: SDL's activity with the recompiled title in libmain.so, started
+ * The game: SDL's activity with the recompiled title in libmain_eu.so (libmain_us.so for the American disc), started
  * the way the desktop launcher starts it - from xerenge.conf (Settings), which
  * the installer writes beside game/ in the app's external files directory
  * (/sdcard/Android/data/com.xerenge.burnout/files, reachable over adb):
@@ -151,9 +151,9 @@ public class BurnoutActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        // SDL itself is linked into librexruntime.so, which libmain.so needs;
+        // SDL itself is linked into librexruntime.so, which the game needs;
         // libc++_shared.so first, as both of them do. The American release
-        // has a game of its own, libmain_usa.so.
+        // has a game of its own, libmain_us.so.
         return new String[] { "c++_shared", "rexruntime", Settings.gameLibrary(this) };
     }
 

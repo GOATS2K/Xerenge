@@ -117,13 +117,13 @@ final class Settings {
      * The American release's default.xex. Its code lies where the European
      * one's does, but the territory it was built for is compiled into it - the
      * language, the PAL or NTSC videos - so it has a build of its own,
-     * libmain_usa.so beside libmain.so.
+     * libmain_us.so beside libmain_eu.so.
      */
-    static final String USA_XEX_SHA256 =
+    static final String XEX_SHA256_US =
             "5258c75d9ae649ed4fb71d4e2fe8808545db16092cfe764ea1a2504f5aae2e2d";
 
     /** Whether the extracted game is the American release. */
-    static boolean usaGame(Context context) {
+    static boolean usGame(Context context) {
         try (FileInputStream in = new FileInputStream(new File(gameDir(context), "default.xex"))) {
             MessageDigest sha = MessageDigest.getInstance("SHA-256");
             byte[] chunk = new byte[1 << 20];
@@ -134,15 +134,15 @@ final class Settings {
             for (byte b : sha.digest()) {
                 hex.append(String.format("%02x", b & 0xff));
             }
-            return USA_XEX_SHA256.contentEquals(hex);
+            return XEX_SHA256_US.contentEquals(hex);
         } catch (Exception error) {
             return false;
         }
     }
 
-    /** The game's library for the extracted release: "main" or "main_usa". */
+    /** The game's library for the extracted release: "main_eu" or "main_us". */
     static String gameLibrary(Context context) {
-        return usaGame(context) ? "main_usa" : "main";
+        return usGame(context) ? "main_us" : "main_eu";
     }
 
     static boolean installed(Context context) {

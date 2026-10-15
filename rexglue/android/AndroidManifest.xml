@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Burnout Revenge for Android: SDL3's activity running libmain.so (the
+<!-- Burnout Revenge for Android: SDL3's activity running libmain_eu.so or libmain_us.so (the
      recompiled game). extractNativeLibs puts the .so files on disk, where the
      runtime looks for its GPU plugin (librexgpu-plume.so) beside itself. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"

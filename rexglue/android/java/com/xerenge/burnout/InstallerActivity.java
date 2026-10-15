@@ -847,7 +847,7 @@ public class InstallerActivity extends Activity {
             }
             // The American release runs its own build of the game; an APK
             // made without the American files carries only the European one.
-            if (Settings.usaGame(this) && !hasLibrary("main_usa")) {
+            if (Settings.usGame(this) && !hasLibrary("main_us")) {
                 finishInstall(getString(R.string.step_failed, getString(R.string.step_extract),
                         getString(R.string.no_usa_build)));
                 return;
