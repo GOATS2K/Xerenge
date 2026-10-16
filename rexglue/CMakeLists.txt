@@ -235,6 +235,10 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     target_compile_options(xerenge-etcpak PRIVATE -msse4.1)
 endif()
 target_link_libraries(rexgpu-plume PRIVATE xerenge-etcpak)
+# zlib for the ETC2 preparation (xerenge_prepare_etc2): the installer's textures as ETC2.
+if(ANDROID OR (UNIX AND NOT APPLE))
+    target_link_libraries(rexgpu-plume PRIVATE z)
+endif()
 if(ANDROID)
     # libadrenotools opens a Vulkan driver the app ships (Mesa Turnip) in place
     # of the system one; its hook libraries go into the APK beside it.

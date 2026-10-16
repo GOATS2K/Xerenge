@@ -32,6 +32,9 @@ class Etc2Cache {
 
   // Counts so far, for the log.
   void NoteMiss(double milliseconds);
+  // Waits until every file handed to the writer is on disk, logs the counts and
+  // lets go of what is held in memory.
+  void Flush();
 
  private:
   Etc2Cache() = default;

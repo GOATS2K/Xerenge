@@ -95,6 +95,8 @@
     <string name="select_image_first">Select the game\'s disc image first.</string>
     <string name="step_extract">Extracting the disc image</string>
     <string name="step_settings">Writing the settings</string>
+    <string name="step_etc2">Preparing the textures as ETC2</string>
+    <string name="preparing_etc2">Preparing the textures: %1$d of %2$d files</string>
     <string name="step_failed">%1$s failed: %2$s</string>
     <string name="cannot_write">cannot write %1$s</string>
     <string name="no_usa_build">the disc is the American release, and this app carries the game built for the European one only</string>

@@ -94,6 +94,8 @@
     <string name="select_image_first">Сначала выберите образ диска игры.</string>
     <string name="step_extract">Распаковка образа диска</string>
     <string name="step_settings">Запись настроек</string>
+    <string name="step_etc2">Подготовка текстур в ETC2</string>
+    <string name="preparing_etc2">Подготовка текстур: %1$d из %2$d файлов</string>
     <string name="step_failed">%1$s — ошибка: %2$s</string>
     <string name="cannot_write">не удаётся записать %1$s</string>
     <string name="no_usa_build">это американское издание, а в приложении есть только игра, собранная для европейского</string>

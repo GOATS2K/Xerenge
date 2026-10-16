@@ -7,6 +7,7 @@
 // through it: reopening it by path (/proc/self/fd/N) is checked against the
 // storage permissions the app does not have.
 
+#include <dlfcn.h>
 #include <jni.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -118,5 +119,43 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_xerenge_burnout_InstallerActivity_
   } catch (const std::exception& error) {
     return env->NewStringUTF(error.what());
   }
+  return nullptr;
+}
+
+// "Textures as ETC2": every DXT texture of the extracted game re-encoded ahead,
+// into the ETC2 cache the game reads (<cache_root>/etc2), by the renderer's
+// own xerenge_prepare_etc2 in librexgpu-plume.so - the same untiling and
+// encoding, so the same keys. progress.onProgress(3, files done, files). Done
+// once: a marker in the cache says it was, for this encoder version.
+extern "C" JNIEXPORT jstring JNICALL Java_com_xerenge_burnout_InstallerActivity_nativePrepareEtc2(
+    JNIEnv* env, jclass, jstring game_dir, jstring cache_root, jobject progress_object) {
+  const std::string game = FromJava(env, game_dir);
+  const std::string cache = FromJava(env, cache_root);
+  const std::string marker = cache + "/etc2/prepared-1";
+  struct stat info {};
+  if (stat(marker.c_str(), &info) == 0) {
+    return nullptr;
+  }
+  void* plume = dlopen("librexgpu-plume.so", RTLD_NOW);
+  if (!plume) {
+    return env->NewStringUTF(dlerror());
+  }
+  using Prepare = int (*)(const char*, const char*, void (*)(void*, uint32_t, uint32_t), void*);
+  const auto prepare = reinterpret_cast<Prepare>(dlsym(plume, "xerenge_prepare_etc2"));
+  if (!prepare) {
+    return env->NewStringUTF("this build's renderer cannot prepare textures");
+  }
+  Progress progress{env, progress_object,
+                    env->GetMethodID(env->GetObjectClass(progress_object), "onProgress", "(IJJ)V")};
+  const int textures = prepare(
+      game.c_str(), cache.c_str(),
+      [](void* ctx, uint32_t done, uint32_t total) {
+        static_cast<const Progress*>(ctx)->Report(3, done, total);
+      },
+      &progress);
+  if (textures < 0) {
+    return env->NewStringUTF("cannot read the game's files");
+  }
+  std::ofstream(marker) << textures << '\n';
   return nullptr;
 }

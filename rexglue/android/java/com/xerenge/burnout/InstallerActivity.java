@@ -82,6 +82,8 @@ public class InstallerActivity extends Activity {
 
     /** Checks and extracts the image; returns null or what went wrong. */
     private static native String nativeInstall(int fd, String destination, boolean verify, Progress progress);
+    /** Textures as ETC2: the game's DXT textures re-encoded into the ETC2 cache ahead (phase 3). */
+    private static native String nativePrepareEtc2(String gameDir, String cacheRoot, Progress progress);
 
     /** Called from the native side, on the worker thread. */
     public interface Progress {
@@ -799,9 +801,11 @@ public class InstallerActivity extends Activity {
         } else {
             descriptor = null;
         }
-        // Step weights as on the desktop: extraction 30, the settings 1.
+        // Step weights as on the desktop: extraction 30, the settings 1; the
+        // textures prepared as ETC2 20, when asked for.
         final int extractWeight = extracted ? 0 : 30;
-        final int total = extractWeight + 1;
+        final int etc2Weight = chosen.etc2Textures ? 20 : 0;
+        final int total = extractWeight + etc2Weight + 1;
         progress.setProgress(0);
         setBusy(true);
         new Thread(() -> {
@@ -852,7 +856,26 @@ public class InstallerActivity extends Activity {
                         getString(R.string.no_usa_build)));
                 return;
             }
-            post(getString(R.string.step_settings) + "...", 1000 * extractWeight / total);
+            if (chosen.etc2Textures) {
+                post(getString(R.string.step_etc2) + "...", 1000 * extractWeight / total);
+                final long[] last = {0};
+                File cacheRoot = new File(new File(Settings.root(this), "user"), "cache");
+                String error = nativePrepareEtc2(game.getAbsolutePath(), cacheRoot.getAbsolutePath(),
+                        (phase, done, all) -> {
+                            long now = System.currentTimeMillis();
+                            if (now - last[0] < 200 || all <= 0) {
+                                return;
+                            }
+                            last[0] = now;
+                            post(getString(R.string.preparing_etc2, (int) done, (int) all),
+                                    (int) (1000 * (extractWeight + etc2Weight * done / (double) all) / total));
+                        });
+                if (error != null) {
+                    finishInstall(getString(R.string.step_failed, getString(R.string.step_etc2), error));
+                    return;
+                }
+            }
+            post(getString(R.string.step_settings) + "...", 1000 * (extractWeight + etc2Weight) / total);
             if (!chosen.save(this)) {
                 finishInstall(getString(R.string.step_failed, getString(R.string.step_settings),
                         getString(R.string.cannot_write, Settings.file(this).getAbsolutePath())));

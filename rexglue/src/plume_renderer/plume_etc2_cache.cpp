@@ -4,6 +4,7 @@
  */
 #include "plume_renderer/plume_etc2_cache.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -28,8 +29,13 @@ namespace {
 // settings, the decode before it): files of another version are not read.
 constexpr uint32_t kVersion = 1;
 constexpr uint32_t kMagic = 0x32434558;  // "XEC2"
-// What this run keeps in memory; past it, the oldest half goes (the files stay).
+// What this run keeps in memory; past it, the oldest go (the files stay). Less
+// on a phone, whose memory the game itself needs and whose storage is fast.
+#ifdef __ANDROID__
+constexpr size_t kMemoryLimit = size_t(96) << 20;
+#else
 constexpr size_t kMemoryLimit = size_t(256) << 20;
+#endif
 
 struct Entry {
   int alpha = 0;
@@ -57,14 +63,16 @@ struct State {
   std::deque<std::pair<uint64_t, std::shared_ptr<const Entry>>> pending;
   std::condition_variable wake;
   bool writer_started = false;
+  int writing = 0;  // taken off pending, not yet on disk
 
   uint64_t memory_hits = 0, disk_hits = 0, misses = 0, written = 0;
   double miss_ms = 0;
 };
 
+// Never destroyed: the writer thread waits on it to the end of the process.
 State& S() {
-  static State state;
-  return state;
+  static State* state = new State;
+  return *state;
 }
 
 std::filesystem::path FileFor(const std::filesystem::path& dir, uint64_t key) {
@@ -96,6 +104,7 @@ void Writer() {
       s.wake.wait(lock, [&] { return !s.pending.empty(); });
       job = std::move(s.pending.front());
       s.pending.pop_front();
+      ++s.writing;
       dir = s.dir;
     }
     const std::filesystem::path file = FileFor(dir, job.first);
@@ -108,13 +117,16 @@ void Writer() {
       out.write(reinterpret_cast<const char*>(job.second->data.data()),
                 std::streamsize(job.second->data.size()));
       if (!out) {
+        std::lock_guard lock(s.mutex);
+        --s.writing;
         continue;
       }
     }
     std::error_code error;
     std::filesystem::rename(partial, file, error);
+    std::lock_guard lock(s.mutex);
+    --s.writing;
     if (!error) {
-      std::lock_guard lock(s.mutex);
       ++s.written;
     }
   }
@@ -239,6 +251,25 @@ void Etc2Cache::Store(uint64_t key, int alpha, const std::vector<uint8_t>& data,
   if (!s.dir.empty()) {
     s.pending.emplace_back(key, std::move(entry));
     s.wake.notify_one();
+  }
+}
+
+void Etc2Cache::Flush() {
+  State& s = S();
+  for (;;) {
+    {
+      std::lock_guard lock(s.mutex);
+      if ((s.pending.empty() && s.writing == 0) || s.dir.empty()) {
+        LogNow(s);
+        // What was prepared ahead stays on disk only: the installer runs in the
+        // game's process, and the game reads what it draws as it needs it.
+        s.entries.clear();
+        s.order.clear();
+        s.bytes = 0;
+        return;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 }
 

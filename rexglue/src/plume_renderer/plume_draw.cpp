@@ -58,7 +58,11 @@
 #include <ProcessRGB.hpp>
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#if defined(__ANDROID__) || defined(__linux__)
+#include <zlib.h>
+#endif
 #include <cstdlib>
 #include <ctime>
 
@@ -9013,5 +9017,171 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
         last.num_indices);
   }
 }
+
+
+#if defined(__ANDROID__) || defined(__linux__)
+// The disc's DXT textures re-encoded as ETC2 ahead of the game, into the ETC2
+// cache, for a GPU without BC (the installer's "Textures as ETC2"): nothing is
+// re-encoded while the game runs.
+//
+// A texture lies in a file - zlib streams are inflated first - as a 4 KiB
+// page whose +0x34 holds its Direct3D header (the six dwords of its fetch
+// constant from +0x44, base address 0 and the mips' address relative to it)
+// and whose data starts at +0x1000: found so for every DXT texture seen in
+// the title's memory, byte for byte (Global.txd, the tracks', the cars',
+// the interface's). Each is untiled, its mips decoded and both re-encoded by
+// the very functions the renderer uses, so that the keys are the ones it
+// looks up; one this misses is re-encoded in the game as before.
+namespace {
+
+bool InflateAll(const std::vector<uint8_t>& in, std::vector<uint8_t>* out) {
+  z_stream z{};
+  if (inflateInit(&z) != Z_OK) {
+    return false;
+  }
+  z.next_in = const_cast<uint8_t*>(in.data());
+  z.avail_in = uInt(in.size());
+  std::vector<uint8_t> chunk(1 << 20);
+  int r;
+  do {
+    z.next_out = chunk.data();
+    z.avail_out = uInt(chunk.size());
+    r = inflate(&z, Z_NO_FLUSH);
+    out->insert(out->end(), chunk.data(), chunk.data() + (chunk.size() - z.avail_out));
+  } while (r == Z_OK);
+  inflateEnd(&z);
+  return r == Z_STREAM_END;
+}
+
+constexpr uint8_t kTextureHeader[16] = {0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF};
+
+// The textures of one file's bytes; how many were re-encoded.
+uint32_t PrepareEtc2In(const std::vector<uint8_t>& bytes) {
+  using rex::graphics::xenos::TextureFormat;
+  uint32_t count = 0;
+  for (size_t page = 0; page + 0x1000 < bytes.size(); page += 0x1000) {
+    if (std::memcmp(bytes.data() + page + 0x34, kTextureHeader, sizeof(kTextureHeader)) != 0) {
+      continue;
+    }
+    rex::graphics::xenos::xe_gpu_texture_fetch_t fetch{};
+    uint32_t dwords[6];
+    for (int i = 0; i < 6; ++i) {
+      uint32_t be;
+      std::memcpy(&be, bytes.data() + page + 0x44 + i * 4, 4);
+      dwords[i] = rex::byte_swap(be);
+    }
+    std::memcpy(&fetch, dwords, sizeof(fetch));
+    const TextureFormat base_fmt = rex::graphics::GetBaseFormat(fetch.format);
+    if (base_fmt != TextureFormat::k_DXT1 && base_fmt != TextureFormat::k_DXT2_3 &&
+        base_fmt != TextureFormat::k_DXT4_5) {
+      continue;
+    }
+    // Any page will do as the base, as long as it is not 0: the mips' address
+    // is taken against it.
+    constexpr uint32_t kBasePage = 0x10000;
+    const uint32_t mip_offset_pages = fetch.mip_address;
+    fetch.base_address = kBasePage;
+    if (mip_offset_pages != 0) {
+      fetch.mip_address = kBasePage + mip_offset_pages;
+    }
+    rex::graphics::TextureInfo info{};
+    if (!rex::graphics::TextureInfo::Prepare(fetch, &info)) {
+      continue;
+    }
+    const uint32_t width = info.width + 1;
+    const uint32_t height = info.height + 1;
+    if (width == 0 || height == 0 || width > 2048 || height > 2048) {
+      continue;
+    }
+    const uint8_t* src = bytes.data() + page + 0x1000;
+    const size_t available = bytes.size() - (page + 0x1000);
+    const size_t source_size = GuestTextureSourceSize(info);
+    if (source_size == 0 || source_size > available) {
+      continue;
+    }
+    std::vector<uint8_t> pixels;
+    uint32_t row_bytes = 0;
+    uint32_t row_texels = 0;
+    if (!UntileGuestTexture(info, src, &pixels, &row_bytes, &row_texels, false, false) ||
+        pixels.empty() || row_bytes == 0) {
+      continue;
+    }
+    std::vector<HostMipLevel> mip_levels;
+    GuestMipSource mips;
+    if (LocateGuestMips(fetch, &mips) && mips.address >= (kBasePage << 12) &&
+        mips.address - (kBasePage << 12) + mips.size <= available) {
+      DecodeGuestMips(fetch, mips, src + (mips.address - (kBasePage << 12)), info.endianness,
+                      false, false, false, false, &mip_levels);
+    }
+    const uint32_t block_bytes = base_fmt == TextureFormat::k_DXT1 ? 8u : 16u;
+    std::vector<uint8_t> encoded;
+    int alpha = -1;
+    uint32_t encoded_row = 0;
+    if (!TranscodeBcToEtc2(base_fmt, pixels, row_bytes, width, height, &alpha, &encoded,
+                           &encoded_row)) {
+      continue;
+    }
+    for (const HostMipLevel& mip : mip_levels) {
+      std::vector<uint8_t> level;
+      uint32_t level_row = 0;
+      if (mip.width != 0 && mip.height != 0) {
+        TranscodeBcToEtc2(base_fmt, mip.pixels, mip.row_texels / 4 * block_bytes, mip.width,
+                          mip.height, &alpha, &level, &level_row);
+      }
+    }
+    ++count;
+  }
+  return count;
+}
+
+}  // namespace
+
+// For the installer: every DXT texture under game_dir into the ETC2 cache under
+// cache_root (<cache_root>/etc2, where the game looks). progress(ctx, done,
+// total) after each file. The number of textures, or -1.
+extern "C" __attribute__((visibility("default"))) int xerenge_prepare_etc2(
+    const char* game_dir, const char* cache_root, void (*progress)(void*, uint32_t, uint32_t),
+    void* ctx) {
+  if (!game_dir || !cache_root) {
+    return -1;
+  }
+  Etc2Cache& cache = Etc2Cache::Instance();
+  cache.SetRoot(cache_root);
+  std::vector<std::filesystem::path> files;
+  std::error_code error;
+  for (auto it = std::filesystem::recursive_directory_iterator(game_dir, error);
+       !error && it != std::filesystem::recursive_directory_iterator(); it.increment(error)) {
+    if (it->is_regular_file(error) && it->file_size(error) >= 0x2000 &&
+        it->file_size(error) < (size_t(512) << 20)) {
+      files.push_back(it->path());
+    }
+  }
+  if (error && files.empty()) {
+    return -1;
+  }
+  const auto start = std::chrono::steady_clock::now();
+  uint32_t textures = 0;
+  for (size_t i = 0; i < files.size(); ++i) {
+    std::ifstream in(files[i], std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});
+    if (bytes.size() > 2 && bytes[0] == 0x78 && ((bytes[0] << 8) | bytes[1]) % 31 == 0) {
+      std::vector<uint8_t> inflated;
+      if (InflateAll(bytes, &inflated)) {
+        bytes = std::move(inflated);
+      }
+    }
+    textures += PrepareEtc2In(bytes);
+    if (progress) {
+      progress(ctx, uint32_t(i + 1), uint32_t(files.size()));
+    }
+  }
+  cache.Flush();
+  REXLOG_INFO("plume: ETC2 prepared for {} texture(s) in {} file(s), {:.1f} s", textures,
+              files.size(),
+              std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+  return int(textures);
+}
+#endif
 
 }  // namespace rex::plume_renderer
