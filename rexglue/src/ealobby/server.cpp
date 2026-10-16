@@ -1042,6 +1042,74 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     }
     return;
   }
+  if (message.command == "sviw") {
+    // The statistics view the next rankings are of (VIEW=PS2 before the
+    // recent players' clips): its columns, read at 0x82410020 - N of them,
+    // then NAMES, DESCS, TYPES, PARAMS and SYMS, a comma-separated value per
+    // column. N=0 leaves the client allocating nothing, which it takes for a
+    // failure (and waits on "Downloading" for good): one column, the downloads.
+    reply_with(Fields{{"VIEW", field("VIEW", "")},
+                      {"N", "1"},
+                      {"NAMES", "DOWNLOADS"},
+                      {"DESCS", "Downloads"},
+                      {"TYPES", "0"},
+                      {"PARAMS", "0"},
+                      {"SYMS", "D"}});
+    return;
+  }
+  if (message.command == "sdta") {
+    // A persona's statistics in the view sviw chose (read at 0x82410460): SLOT
+    // as asked (another is refused), STATS its columns' values, comma-separated
+    // - the one column, the downloads of its clips.
+    uint64_t downloads = 0;
+    if (locker_) {
+      for (const Locker::Clip& clip : locker_->Clips()) {
+        if (clip.persona == field("PERS", "")) {
+          downloads += clip.downloads;
+        }
+      }
+    }
+    reply_with(Fields{{"SLOT", field("SLOT", "0")}, {"STATS", std::to_string(downloads)}});
+    return;
+  }
+  if (message.command == "snap") {
+    // A rankings snapshot (LobbyRank): the reply heads it - CHAN and SEQN as
+    // asked, RANGE the rows, DESC, CC columns, each CN/CD/CP/CW/CT (read at
+    // 0x82406CC8) - and a +snp a row follows: R its rank, P its points, O, N
+    // the persona, S its columns' values (0x82411F58). The top 20 clips and
+    // the recent players' are the server's clips, the most fetched first.
+    const std::vector<Locker::Clip> clips = locker_ ? locker_->Clips() : std::vector<Locker::Clip>{};
+    const size_t start = std::min<size_t>(number(field("START", "0")), clips.size());
+    const size_t rows = std::min<size_t>(clips.size() - start, 20);
+    Fields reply;
+    reply["CHAN"] = field("CHAN", "0");
+    reply["SEQN"] = field("SEQN", "0");
+    reply["RANGE"] = std::to_string(rows);
+    reply["DESC"] = "Clips";
+    reply["CC"] = "1";
+    reply["CN0"] = "DOWNLOADS";
+    reply["CD0"] = "Downloads";
+    reply["CP0"] = "";
+    reply["CW0"] = "8";
+    reply["CT0"] = "0";
+    reply_with(reply);
+    for (size_t i = 0; i < rows; ++i) {
+      const Locker::Clip& clip = clips[start + i];
+      Fields row;
+      row["R"] = std::to_string(start + i + 1);
+      // Points of 0 the client drops (the top 20 came up empty with every
+      // clip at 0 downloads): a shared clip ranks with 1 at least.
+      row["P"] = std::to_string(std::max<uint64_t>(clip.downloads, 1));
+      row["O"] = "0";
+      row["N"] = clip.persona;
+      // The column's value is the locker the client opens for the clip
+      // (it asked dir pers=1 when this held the downloads): the owner.
+      row["S"] = clip.persona;
+      Log("lobby -> +snp " + Printable(FormatFields(row)) + " (clip " + clip.name + ")");
+      Send(connection, Encode("+snp", row));
+    }
+    return;
+  }
   // Not handled yet: an empty success, to see what comes next.
   Log("lobby: " + Printable(message.command) + " not handled yet; answered empty");
   Send(connection, Encode(message.command, std::string(1, '\0')));

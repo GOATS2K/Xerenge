@@ -35,6 +35,16 @@ class Locker {
   // The whole HTTP response to it.
   std::vector<uint8_t> Handle(const std::vector<uint8_t>& request);
 
+  // The clips on the server - each persona's files of the clip body type
+  // (b4replaybody) - and how often others have fetched them: the top 20 and
+  // the recent players' clips are made of these.
+  struct Clip {
+    std::string persona;
+    std::string name;
+    uint64_t downloads = 0;
+  };
+  std::vector<Clip> Clips() const;
+
  private:
   std::filesystem::path root_;
   std::function<std::string(const std::string&)> persona_for_key_;

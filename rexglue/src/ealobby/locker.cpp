@@ -228,6 +228,16 @@ std::vector<uint8_t> Locker::Handle(const std::vector<uint8_t>& request) {
     if (!in) {
       return Error("NOFILE");
     }
+    // A clip fetched by someone else counts towards the top 20.
+    if (pers != self && type == "b4replaybody") {
+      auto meta = ReadMeta(dir / (stored + ".meta"));
+      const uint64_t downloads = std::strtoull(meta["downloads"].c_str(), nullptr, 10) + 1;
+      meta["downloads"] = std::to_string(downloads);
+      std::ofstream out(dir / (stored + ".meta"), std::ios::trunc);
+      for (const auto& [key, value] : meta) {
+        out << key << '=' << value << '\n';
+      }
+    }
     std::string data((std::istreambuf_iterator<char>(in)), {});
     return Response(200, "application/octet-stream", data);
   }
@@ -262,6 +272,33 @@ std::vector<uint8_t> Locker::Handle(const std::vector<uint8_t>& request) {
     return Response(200, "text/xml", list());
   }
   return Error("BADCMD");
+}
+
+std::vector<Locker::Clip> Locker::Clips() const {
+  std::vector<Clip> clips;
+  std::error_code error;
+  for (const auto& persona : std::filesystem::directory_iterator(root_, error)) {
+    if (!persona.is_directory()) {
+      continue;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(persona.path(), error)) {
+      const std::string stored = entry.path().filename().string();
+      const std::string suffix = "~b4replaybody";
+      if (stored.size() <= suffix.size() ||
+          stored.compare(stored.size() - suffix.size(), suffix.size(), suffix) != 0) {
+        continue;
+      }
+      auto meta = ReadMeta(persona.path() / (stored + ".meta"));
+      Clip clip;
+      clip.persona = persona.path().filename().string();
+      clip.name = meta.count("name") ? meta["name"] : stored.substr(0, stored.size() - suffix.size());
+      clip.downloads = std::strtoull(meta["downloads"].c_str(), nullptr, 10);
+      clips.push_back(std::move(clip));
+    }
+  }
+  std::sort(clips.begin(), clips.end(),
+            [](const Clip& a, const Clip& b) { return a.downloads > b.downloads; });
+  return clips;
 }
 
 }  // namespace ealobby
