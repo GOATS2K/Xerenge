@@ -2,6 +2,10 @@
 //
 //   ealobby [--host 0.0.0.0] [--directory-port 31860] [--lobby-port 31861]
 //           [--advertise <address clients should reach the lobby at>]
+//           [--locker-port 31862] [--locker-dir locker]
+//
+// The Locker keeps the players' Burnout Clips (shared, recommended, the top 20)
+// as files under --locker-dir; --locker-port 0 turns it off.
 //
 // Point a game at it with --lobby_server=<address> (see SETUP.md).
 #include <csignal>
@@ -23,6 +27,7 @@ void OnSignal(int) {
 
 int main(int argc, char** argv) {
   ealobby::Options options;
+  options.locker_port = 31862;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     auto value = [&]() -> std::string {
@@ -40,10 +45,14 @@ int main(int argc, char** argv) {
       options.lobby_port = uint16_t(std::stoi(value()));
     } else if (arg == "--advertise") {
       options.advertise = value();
+    } else if (arg == "--locker-port") {
+      options.locker_port = uint16_t(std::stoi(value()));
+    } else if (arg == "--locker-dir") {
+      options.locker_dir = value();
     } else {
       std::fprintf(stderr,
                    "usage: ealobby [--host A] [--directory-port P] [--lobby-port P] "
-                   "[--advertise A]\n");
+                   "[--advertise A] [--locker-port P] [--locker-dir D]\n");
       return arg == "--help" || arg == "-h" ? 0 : 2;
     }
   }

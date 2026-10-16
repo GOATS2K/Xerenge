@@ -26,6 +26,7 @@
 #include "guest_memory.h"
 
 REXCVAR_DECLARE(bool, online);
+REXCVAR_DECLARE(std::string, lobby_server);
 // Off, the lobby is not stood in for: the title talks to a lobby server (ours,
 // tools/ealobby) and hears its real answers. On until that server does the job.
 REXCVAR_DEFINE_BOOL(online_fake_lobby, true, "Network",
@@ -42,6 +43,7 @@ extern "C" void __imp__sub_8222FB00(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_82230B70(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_8222BFD8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_8211F448(PPCContext& __restrict, uint8_t*);
+extern "C" void __imp__sub_8240BE58(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_821E9638(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_821E95A8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_82224DD0(PPCContext& __restrict, uint8_t*);
@@ -278,10 +280,42 @@ REX_HOOK_RAW(sub_82230B70) {
   __imp__sub_82230B70(ctx, base);
 }
 
+// EA's Locker - Burnout Clips' store - on a self-hosted lobby server
+// (--lobby_server): the ealobby there answers it over HTTP on port 31862
+// (locker.h). A copy's own lobby has none: clips are shared through a server.
+// "host:port", or "" without one.
+std::string LockerHost() {
+  const std::string server = REXCVAR_GET(lobby_server);
+  if (!Online() || server.empty()) {
+    return {};
+  }
+  return server.substr(0, server.find(':')) + ":31862";
+}
+
+// LockerApiCreate(host, callback, ref): without a host the Locker is EA's,
+// sdevbesl01.online.ea.com, copied to ref+4 (256 bytes) and put into every
+// request's URL - http://<host>/easo/editorial/common/2006/locker/locker.jsp.
+// The server's Locker is written there instead.
+REX_HOOK_RAW(sub_8240BE58) {
+  __imp__sub_8240BE58(ctx, base);
+  const std::string host = LockerHost();
+  const uint32_t ref = ctx.r3.u32;
+  if (!host.empty() && ref != 0 && host.size() < 255) {
+    std::memcpy(xerenge::GuestPointer(base, ref + 4), host.c_str(), host.size() + 1);
+    REXLOG_INFO("--online: Locker (Burnout Clips) at {}", host);
+  }
+}
+
 // The replay manager's login step (Burnout Clips sharing, also on EA's Locker),
 // queued by RivalsDownloadedCallback with ReplayManagerOnLoginCallback, which
-// only sets the post-login manager (r6) to state 5. Not queued; state 5 set.
+// only sets the post-login manager (r6) to state 5. With a server's Locker it
+// runs; without one it is not queued and state 5 is set.
 REX_HOOK_RAW(sub_8211F448) {
+  if (Online() && !LockerHost().empty()) {
+    REXLOG_INFO("--online: replay manager logs in to the Locker at {}", LockerHost());
+    __imp__sub_8211F448(ctx, base);
+    return;
+  }
   if (Online()) {
     REXLOG_INFO("--online: replay manager login skipped (no Locker server)");
     const uint32_t value = __builtin_bswap32(5u);

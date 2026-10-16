@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ealobby/aries.h"
+#include "ealobby/locker.h"
 
 namespace ealobby {
 
@@ -39,6 +40,11 @@ struct Options {
   // hosted by the others. Empty (the standalone server): off.
   std::string self_address;
   uint16_t beacon_port = 31859;
+  // EA's Locker (Burnout Clips, locker.h) over HTTP on this port, its files
+  // under locker_dir. 0: no Locker - a game's own lobby has none; the clips
+  // live on a self-hosted server only.
+  uint16_t locker_port = 0;
+  std::string locker_dir = "locker";
 };
 
 class Server {
@@ -56,7 +62,7 @@ class Server {
  private:
   // kPeer: a link between two servers (messages xhlo, xjoi, xfwd, xlea). kRemote: a player of another server,
   // joined to a game hosted here; what is sent to it goes through its link.
-  enum class Role { kDirectory, kLobby, kPeer, kRemote };
+  enum class Role { kDirectory, kLobby, kPeer, kRemote, kHttp };
 
   struct Connection {
     SocketHandle fd = -1;
@@ -81,6 +87,7 @@ class Server {
     std::chrono::steady_clock::time_point last_sent = std::chrono::steady_clock::now();
     std::vector<uint8_t> in;
     std::vector<uint8_t> out;
+    bool close_when_sent = false;  // kHttp: one request, one answer
   };
 
   SocketHandle Listen(uint16_t port);
@@ -120,6 +127,11 @@ class Server {
   LogFunction log_;
   SocketHandle directory_listener_ = -1;
   SocketHandle lobby_listener_ = -1;
+  SocketHandle locker_listener_ = -1;
+  std::unique_ptr<Locker> locker_;
+  // Login keys (LKEY) handed out, and the persona each went to: the Locker's
+  // requests carry the key.
+  std::map<std::string, std::string> lkeys_;
   // A pipe (POSIX) or a loopback socket pair (Windows) to interrupt poll()/
   // WSAPoll() when stopping.
   SocketHandle wake_[2] = {-1, -1};

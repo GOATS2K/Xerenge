@@ -710,7 +710,7 @@ jobs:
 
       - name: Build
         run: |
-          sources="rexglue/tools/ealobby/main.cpp rexglue/src/ealobby/aries.cpp rexglue/src/ealobby/server.cpp"
+          sources="rexglue/tools/ealobby/main.cpp rexglue/src/ealobby/aries.cpp rexglue/src/ealobby/locker.cpp rexglue/src/ealobby/server.cpp"
           mkdir -p out
           g++ -std=c++17 -O2 -pthread -Irexglue/src -static-libstdc++ -static-libgcc $sources \
             -o out/ealobby-linux-amd64
@@ -719,7 +719,7 @@ jobs:
           cat > out/README.txt <<'EOF'
           A lobby server for Burnout Revenge's online mode, standing in for EA's.
 
-            ealobby-linux-amd64 [--host A] [--directory-port P] [--lobby-port P] [--advertise A]
+            ealobby-linux-amd64 [--host A] [--directory-port P] [--lobby-port P] [--advertise A] [--locker-port P] [--locker-dir D]
             ealobby-win-amd64.exe  (the same options)
 
           TCP ports 31860 and 31861 must be reachable. Players start the game with

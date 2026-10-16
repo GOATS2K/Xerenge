@@ -287,6 +287,20 @@ bool Server::Start() {
     Stop();
     return false;
   }
+  if (options_.locker_port != 0) {
+    locker_listener_ = Listen(options_.locker_port);
+    if (locker_listener_ >= 0) {
+      locker_ = std::make_unique<Locker>(
+          options_.locker_dir,
+          [this](const std::string& key) {
+            const auto it = lkeys_.find(key);
+            return it != lkeys_.end() ? it->second : std::string();
+          },
+          [this](const std::string& line) { Log(line); });
+      Log("ealobby: Locker (Burnout Clips) on port " + std::to_string(options_.locker_port) +
+          ", files in " + options_.locker_dir);
+    }
+  }
   if (!options_.self_address.empty()) {
     unsigned a = 0, b = 0, c = 0, d = 0;
     if (std::sscanf(options_.self_address.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
@@ -322,7 +336,7 @@ void Server::Stop() {
     }
   }
   connections_.clear();
-  for (SocketHandle* fd : {&directory_listener_, &lobby_listener_, &beacon_, &wake_[0], &wake_[1]}) {
+  for (SocketHandle* fd : {&directory_listener_, &lobby_listener_, &locker_listener_, &beacon_, &wake_[0], &wake_[1]}) {
     if (*fd >= 0) {
       CloseNative(ToNative(*fd));
       *fd = -1;
@@ -337,6 +351,7 @@ void Server::Run() {
     fds.push_back(MakePollFd(directory_listener_, POLLIN));
     fds.push_back(MakePollFd(lobby_listener_, POLLIN));
     fds.push_back(MakePollFd(beacon_, POLLIN));
+    fds.push_back(MakePollFd(locker_listener_, POLLIN));
     for (auto& [fd, connection] : connections_) {
       if (connection->role == Role::kRemote) {
         continue;
@@ -360,8 +375,11 @@ void Server::Run() {
     if (beacon_ >= 0 && (fds[3].revents & POLLIN)) {
       ReceiveBeacon();
     }
+    if (locker_listener_ >= 0 && (fds[4].revents & POLLIN)) {
+      Accept(locker_listener_, Role::kHttp);
+    }
     std::vector<SocketHandle> closed;
-    for (size_t i = 4; i < fds.size(); ++i) {
+    for (size_t i = 5; i < fds.size(); ++i) {
       auto found = connections_.find(static_cast<SocketHandle>(fds[i].fd));
       if (found == connections_.end()) {
         continue;
@@ -454,6 +472,16 @@ void Server::Receive(Connection& connection) {
     connection.fd = -1;
     return;
   }
+  // The Locker's: one HTTP request, its answer, closed once sent.
+  if (connection.role == Role::kHttp) {
+    if (locker_ && !connection.close_when_sent && Locker::Complete(connection.in)) {
+      connection.close_when_sent = true;
+      const std::vector<uint8_t> request = std::move(connection.in);
+      connection.in.clear();
+      Send(connection, locker_->Handle(request));
+    }
+    return;
+  }
   Message message;
   while (connection.fd >= 0 && TakeMessage(&connection.in, &message)) {
     Handle(connection, message);
@@ -479,6 +507,10 @@ void Server::Flush(Connection& connection) {
       return;
     }
     connection.out.erase(connection.out.begin(), connection.out.begin() + sent);
+  }
+  if (connection.close_when_sent) {
+    CloseNative(native);
+    connection.fd = -1;
   }
 }
 
@@ -650,6 +682,7 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     reply["NAME"] = name;
     reply["PERSONAS"] = name;
     reply["LKEY"] = RandomHex(16);
+    lkeys_[reply["LKEY"]] = name;
     reply["TOS"] = "1";
     reply["SHARE"] = "1";
     reply["SPAM"] = "NN";
@@ -670,6 +703,7 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     reply["PERS"] = name;
     reply["NAME"] = name;
     reply["LKEY"] = RandomHex(16);
+    lkeys_[reply["LKEY"]] = name;
     reply["LAST"] = "2006.2.10-0:00:00";
     reply["PLAST"] = "2006.2.10-0:00:00";
     reply["ADDR"] = PeerAddress(connection);

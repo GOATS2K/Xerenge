@@ -76,3 +76,9 @@
 # its last a branch at 0x823D91FC) and 0x823D9218, reached only through a
 # function pointer, so the analyser never made them a function.
 0x823D9200 = { size = 0x18 }
+
+# Burnout Clips: sharing a clip calls this through a vtable while compressing
+# it - an adjustor thunk (this += 0x20, then a tail branch to 0x823478E8), like
+# its neighbour at 0x820FA1D0, which the analyser did find. Missing, the share
+# stopped the game on "Call to invalid or unregistered function".
+0x820FA1D8 = { size = 0x8 }
