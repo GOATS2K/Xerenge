@@ -17,6 +17,9 @@ bool DrawingInterfaceLeft();
 // ... the kind drawn across the whole screen: overlays over all of the
 // console's 16:9 screen (the crash border, the front end's full-screen flash).
 bool DrawingInterfaceFill();
+// Where the HUD element being drawn goes, from its rectangle in the title's
+// layout: 0 undecided, 1 the left edge, 2 the middle, 3 the right edge.
+uint8_t InterfaceEdge();
 // The 2D object being drawn (CGt2dLayer::RenderObjects draws one at a time),
 // numbered; 0 outside one.
 uint32_t InterfaceObject();

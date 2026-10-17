@@ -8334,6 +8334,9 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
         vy = box_y;
         if (snap.interface_left) {
           vx = 0;
+        } else if (snap.interface_edge != 0 && !snap.has_video_frame()) {
+          // The element's edge, decided from the title's layout of it.
+          vx = snap.interface_edge == 1 ? 0 : snap.interface_edge == 3 ? width - box_w : box_x;
         } else if (snap.interface_object != 0 && !snap.has_video_frame()) {
           if (snap.interface_object != anchor_object && last_fill_x_known_) {
             anchor_object = snap.interface_object;

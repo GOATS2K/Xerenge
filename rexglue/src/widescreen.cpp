@@ -27,7 +27,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
@@ -44,6 +47,8 @@ constexpr float kConsoleAspect = 16.0f / 9.0f;
 thread_local int g_interface_depth = 0;
 thread_local int g_interface_left_depth = 0;
 thread_local int g_interface_fill_depth = 0;
+// Where the element being drawn goes (InterfaceEdge), set by its hook.
+thread_local uint8_t g_element_edge = 0;
 // CGt2dLayer::RenderObjects draws one object per call (it works out the
 // object's space and tail-calls the object's own _Render): numbered here so
 // the renderer can move each object to its edge as a whole.
@@ -93,6 +98,10 @@ bool DrawingInterfaceLeft() {
 
 bool DrawingInterfaceFill() {
   return g_interface_fill_depth > 0;
+}
+
+uint8_t InterfaceEdge() {
+  return g_element_edge;
 }
 
 uint32_t InterfaceObject() {
@@ -253,13 +262,94 @@ void FlushVertexBatch(const PPCContext& ctx, uint8_t* base) {
   sub_82355FD0(flush, base);
 }
 
+// Where an element goes, from the rectangle RenderObjects hands its render
+// (r3: x, y, width, height in the console's 1280x720, worked out from the
+// element's own position and size and its layer's). Against an edge of the
+// console's screen - within 20% of it - it goes to that edge of a wider one;
+// otherwise, or spanning both, it stays in the middle with the rest of the
+// layout. Decided once for the element, not from whichever of its draws
+// comes first: the boost bar's first draw is sometimes a flame in the middle.
+constexpr float kConsoleWidth = 1280.0f;
+
+uint8_t EdgeOf(const uint8_t* base, uint32_t rect) {
+  float lo = GuestFloat(base, rect);
+  float hi = lo + GuestFloat(base, rect + 8);
+  if (hi < lo) {
+    std::swap(lo, hi);
+  }
+  // 20%, not 15%: the rating's star ends at x 1080, left of the word it goes
+  // with, and at 15% it stayed in the middle while the word went right.
+  const bool at_left = lo < kConsoleWidth * 0.2f;
+  const bool at_right = hi > kConsoleWidth * 0.8f;
+  if (at_left != at_right) {
+    return at_left ? 1 : 3;
+  }
+  if (!at_left) {
+    return 2;
+  }
+  // Across both: a full-width piece, or one zooming in - TAKEDOWN! and its
+  // icon start several times their size and shrink into the corner, and taken
+  // as spanning the screen they began in the middle and jumped to the edge a
+  // moment later. A zoom keeps the middle of the element where it is.
+  const float middle = (lo + hi) * 0.5f;
+  return middle < kConsoleWidth * 0.4f ? 1 : middle > kConsoleWidth * 0.6f ? 3 : 2;
+}
+
+// The rating's star keeps the edge it was first given while it stays on
+// screen: it sits left of the word, and AWESOME, longer than GREAT, pushed it
+// out of the right edge's 20% and back to the middle, away from the word. Only
+// the star: the title reuses the nodes of short-lived elements all the time
+// (a message's icon, then its text), and every element keeping its first edge
+// sent a timer's digits and a takedown's icon to the edge of what had been
+// there before. The element is its list node (RenderObjects's r31); one not
+// drawn for a second is decided afresh.
+uint8_t StickyEdge(uint32_t node, uint8_t edge) {
+  struct Seen {
+    uint8_t edge;
+    std::chrono::steady_clock::time_point at;
+  };
+  thread_local std::unordered_map<uint32_t, Seen> seen;
+  const auto now = std::chrono::steady_clock::now();
+  auto [it, added] = seen.try_emplace(node, Seen{edge, now});
+  if (!added && now - it->second.at > std::chrono::seconds(1)) {
+    it->second.edge = edge;
+  }
+  it->second.at = now;
+  return it->second.edge;
+}
+
+// XERENGE_HUD_LOG: an element's rectangle and edge, when the edge it gets
+// changes (the elements of a race are drawn every frame). The element is its
+// list node (RenderObjects's r31): one render function draws many elements.
+void LogElement(const char* name, uint32_t node, const uint8_t* base, uint32_t rect,
+                uint8_t edge) {
+  static const bool on = std::getenv("XERENGE_HUD_LOG") != nullptr;
+  if (!on) {
+    return;
+  }
+  static std::mutex mutex;
+  static std::unordered_map<uint32_t, uint8_t> last;
+  {
+    std::lock_guard lock(mutex);
+    auto [it, added] = last.try_emplace(node, edge);
+    if (!added && it->second == edge) {
+      return;
+    }
+    it->second = edge;
+  }
+  REXLOG_INFO("widescreen: element {:08X} {} x {:.1f} y {:.1f} w {:.1f} h {:.1f} -> {}", node,
+              name, GuestFloat(base, rect), GuestFloat(base, rect + 4), GuestFloat(base, rect + 8),
+              GuestFloat(base, rect + 12),
+              edge == 1 ? "left" : edge == 3 ? "right" : "middle");
+}
+
 }  // namespace
 
 // An element's render, numbered as an element only when RenderObjects's loop
 // calls it: the same functions are also called from inside other elements
 // (the boost bar draws its label with CB4HUDText2dObject::_RenderSolidFill),
 // and there they are part of the element calling them.
-#define ELEMENT_HOOK_DEPTH(name, depth)                                  \
+#define ELEMENT_HOOK_FULL(name, depth, centred, sticky)                  \
   extern "C" void __imp__##name(PPCContext& __restrict, uint8_t*);       \
   REX_HOOK_RAW(name) {                                                   \
     if (uint32_t(ctx.lr) != kRenderObjectsLoop) {                        \
@@ -268,21 +358,33 @@ void FlushVertexBatch(const PPCContext& ctx, uint8_t* base) {
     }                                                                    \
     FlushVertexBatch(ctx, base);                                         \
     g_object_serial = g_object_serial == ~0u ? 1u : g_object_serial + 1; \
+    const uint8_t outer_edge = g_element_edge;                           \
+    g_element_edge = (centred)  ? 2                                      \
+                     : (sticky) ? StickyEdge(ctx.r31.u32, EdgeOf(base, ctx.r3.u32)) \
+                                : EdgeOf(base, ctx.r3.u32);              \
+    LogElement(#name, ctx.r31.u32, base, ctx.r3.u32, g_element_edge);    \
     ++depth;                                                             \
     __imp__##name(ctx, base);                                            \
     FlushVertexBatch(ctx, base);                                         \
     --depth;                                                             \
+    g_element_edge = outer_edge;                                         \
   }
-#define ELEMENT_HOOK(name) ELEMENT_HOOK_DEPTH(name, g_interface_depth)
+#define ELEMENT_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, false)
+// ... an element that keeps its first edge (StickyEdge).
+#define ELEMENT_STICKY_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, true)
+// ... an element that stays in the middle wherever it is: the announcements
+// (a medal, AWESOME CHECKING!) are laid out as several elements around the
+// middle, and one of them moved to an edge left its text behind.
+#define ELEMENT_CENTRED_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, true, false)
 // ... an element drawn across the whole screen.
-#define ELEMENT_FILL_HOOK(name) ELEMENT_HOOK_DEPTH(name, g_interface_fill_depth)
+#define ELEMENT_FILL_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_fill_depth, true, false)
 
 // The element renders a race's HUD was seen to use (names from Beta 5's
 // symbols, carried over by opcode match).
 ELEMENT_HOOK(sub_8215B940)  // CB4EATrax2dObject::_Render
 ELEMENT_HOOK(sub_82186F30)  // C2dObjectBoostBarMessage::_Render
-ELEMENT_HOOK(sub_82188FF0)  // CB4HUDMessagePanel2dObject::_Render
-ELEMENT_HOOK(sub_82189238)  // CB4HUDMessageStars2dObject::_Render
+ELEMENT_CENTRED_HOOK(sub_82188FF0)  // CB4HUDMessagePanel2dObject::_Render
+ELEMENT_CENTRED_HOOK(sub_82189238)  // CB4HUDMessageStars2dObject::_Render
 ELEMENT_HOOK(sub_8218AA90)  // CB4HUDRatingBar::_Render
 ELEMENT_HOOK(sub_8218AFC8)  // CB4HUDRotateImage2dObject::_Render
 ELEMENT_HOOK(sub_8218B458)  // CB4HUDSmallPanel2dObject::_Render
@@ -290,12 +392,13 @@ ELEMENT_HOOK(sub_8218C168)  // CB4HUDSmallPanel2dObject::_RenderCenter
 ELEMENT_HOOK(sub_8218C3C8)  // CB4HUDLargePanel2dObject::_Render
 ELEMENT_HOOK(sub_8218E0C8)  // CB4HUDText2dObject::_RenderSolidFill
 ELEMENT_HOOK(sub_8218E128)  // CB4HUDText2dObject::_RenderVGradientEmboss
-ELEMENT_HOOK(sub_8218E248)  // CB4HUDText2dObject::_RenderMessage1In
-ELEMENT_HOOK(sub_8218E730)  // CB4HUDText2dObject::_RenderMessage1Out
-ELEMENT_HOOK(sub_8218F0A8)  // CB4HUDText2dObject::_RenderVGradientEmbossZoomFlash
+ELEMENT_CENTRED_HOOK(sub_8218E248)  // CB4HUDText2dObject::_RenderMessage1In
+ELEMENT_CENTRED_HOOK(sub_8218E730)  // CB4HUDText2dObject::_RenderMessage1Out
+ELEMENT_CENTRED_HOOK(sub_8218F0A8)  // CB4HUDText2dObject::_RenderVGradientEmbossZoomFlash
 ELEMENT_HOOK(sub_8218F978)  // CB4HUDText2dObject::_RenderRatingText
+ELEMENT_HOOK(sub_8218FC60)  // CB4HUDText2dObject::_RenderDigitalTimer
 ELEMENT_HOOK(sub_82197A88)  // C2dObjectBoostBar::_Render
-ELEMENT_HOOK(sub_8235DB20)  // CGt2dObjectImageRotatable::_Render
+ELEMENT_STICKY_HOOK(sub_8235DB20)  // CGt2dObjectImageRotatable::_Render (the rating's star)
 // The border a crash or a takedown is framed in: black bars over the top and
 // bottom of the whole screen, not of its middle.
 ELEMENT_FILL_HOOK(sub_82187BE0)  // CB4HUDBorder2dObject::_Render
