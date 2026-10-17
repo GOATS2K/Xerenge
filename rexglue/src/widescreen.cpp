@@ -128,6 +128,46 @@ void LeaveInterfaceFill() {
   --g_interface_fill_depth;
 }
 
+// The menus are Flash movies played by Apt (CB4AptManager::Render, hooked
+// below); when one was last drawn.
+std::atomic<int64_t> g_menu_drawn_ms{0};
+
+int64_t SteadyMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// A menu's background video - SAVE/LOAD's, the main menu's, World Tour's -
+// is drawn into the title's own target, copied out, and shown by the menu as
+// a picture across its screen. Kept in the 16:9 box like any video, it filled
+// only the middle of that picture, and the menu, drawn across the whole frame
+// on top, ran into the black beside it. Over the whole frame (fill) it lines
+// up with the menu as a scene does (car select). Only while a menu is shown:
+// a video on its own (the intro) keeps its 16:9.
+bool EnterMenuVideo() {
+  static const bool off = [] {
+    const char* mode = std::getenv("XERENGE_MENU_VIDEO");
+    return mode != nullptr && std::strcmp(mode, "box") == 0;
+  }();
+  // The video plays from CB4FrontEnd::Update, before the menu is drawn, so
+  // the menu is the previous frame's: within a quarter of a second.
+  if (off || WideningFactor() == 1.0f ||
+      SteadyMs() - g_menu_drawn_ms.load(std::memory_order_relaxed) > 250) {
+    return false;
+  }
+  static std::atomic<bool> told{false};
+  if (std::getenv("XERENGE_HUD_LOG") && !told.exchange(true)) {
+    REXLOG_INFO("widescreen: a menu's background video, over the whole frame");
+  }
+  ++g_interface_fill_depth;
+  return true;
+}
+
+void LeaveMenuVideo() {
+  --g_interface_fill_depth;
+}
+
 void EnterInterfaceObject() {
   static std::atomic<bool> told{false};
   if (std::getenv("XERENGE_HUD_LOG") && !told.exchange(true)) {
@@ -505,6 +545,13 @@ REX_HOOK_RAW(sub_82142CD8) {
   ++g_interface_fill_depth;
   __imp__sub_82142CD8(ctx, base);
   --g_interface_fill_depth;
+}
+
+// CB4AptManager::Render - the menus (EnterMenuVideo).
+extern "C" void __imp__sub_821FF308(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_821FF308) {
+  xerenge::g_menu_drawn_ms.store(xerenge::SteadyMs(), std::memory_order_relaxed);
+  __imp__sub_821FF308(ctx, base);
 }
 
 // CB4EATraxDisplay::Render - the music player's panel, in a 16:9 box against

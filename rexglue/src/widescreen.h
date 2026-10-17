@@ -32,6 +32,12 @@ void LeaveInterface();
 // the revenge meter, drawn through the race's widened camera.
 void EnterInterfaceFill();
 void LeaveInterfaceFill();
+// Around CCalVideoRenderer::Render (movie_frames.cpp): while a menu is shown
+// over it, the video is a menu's background, and with XERENGE_MENU_VIDEO not
+// "box" it is marked to cover the whole frame (DrawingInterfaceFill), zoomed
+// or stretched by the renderer. Leave only when Enter answered true.
+bool EnterMenuVideo();
+void LeaveMenuVideo();
 // ... and around one that draws HUD objects (CGt2dLayer::RenderObjects):
 // numbered, so each goes to its edge.
 void EnterInterfaceObject();

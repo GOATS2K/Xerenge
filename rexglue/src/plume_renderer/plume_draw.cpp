@@ -7112,8 +7112,8 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
   // keeps the ordinary one.
   bool viewport_flipped = false;
   int32_t scissor_now[4] = {0, 0, int32_t(width), int32_t(height)};
-  uint32_t viewport_x = 0;
-  uint32_t viewport_y = 0;
+  int32_t viewport_x = 0;
+  int32_t viewport_y = 0;
   uint32_t viewport_w = width;
   uint32_t viewport_h = height;
   // A screen wider than 16:9 (XERENGE_ASPECT_16_9 unset): the scene is drawn
@@ -7162,7 +7162,9 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
       vh = std::min(th, height);
     }
   };
-  auto use_viewport = [&](bool flipped, uint32_t vx, uint32_t vy, uint32_t vw, uint32_t vh) {
+  // The origin is signed: a menu's video zoomed to cover the frame starts
+  // above and left of it. The scissor stays on the frame.
+  auto use_viewport = [&](bool flipped, int32_t vx, int32_t vy, uint32_t vw, uint32_t vh) {
     if (flipped == viewport_flipped && vx == viewport_x && vy == viewport_y && vw == viewport_w &&
         vh == viewport_h) {
       return;
@@ -7174,12 +7176,12 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
     viewport_h = vh;
     list->setViewports(plume::RenderViewport(float(vx), float(vy), float(vw), float(vh),
                                              flipped ? 1.0f : 0.0f, flipped ? 0.0f : 1.0f));
+    scissor_now[0] = std::max(vx, 0);
+    scissor_now[1] = std::max(vy, 0);
+    scissor_now[2] = std::min(vx + int32_t(vw), int32_t(width));
+    scissor_now[3] = std::min(vy + int32_t(vh), int32_t(height));
     list->setScissors(
-        plume::RenderRect(int32_t(vx), int32_t(vy), int32_t(vx + vw), int32_t(vy + vh)));
-    scissor_now[0] = int32_t(vx);
-    scissor_now[1] = int32_t(vy);
-    scissor_now[2] = int32_t(vx + vw);
-    scissor_now[3] = int32_t(vy + vh);
+        plume::RenderRect(scissor_now[0], scissor_now[1], scissor_now[2], scissor_now[3]));
   };
   // What is bound, so that a draw repeating it does not bind it again. A
   // pass break (around a copy) forgets both.
@@ -7669,7 +7671,19 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
       // drawn by the other one it jumped between the box and the whole width.
       // An overlay over the console's whole screen (the crash border, the
       // front end's full-screen flash) is drawn over the whole frame instead.
-      const bool boxed = (box_w != width || box_h != height) && vw == width && vh == height &&
+      //
+      // A menu's background video is marked fill on the Direct3D path only
+      // (widescreen.cpp): a frame of it coming through the ring goes where
+      // the last one through Direct3D went, not back into the box.
+      static bool video_is_menus = false;
+      if (snap.has_video_frame() && snap.d3d_vertex_buffer != 0) {
+        video_is_menus = snap.interface_fill;
+      }
+      const bool menu_video = snap.has_video_frame() && (snap.d3d_vertex_buffer != 0
+                                                             ? snap.interface_fill
+                                                             : video_is_menus);
+      const bool frame_target = vw == width && vh == height;
+      const bool boxed = (box_w != width || box_h != height) && frame_target && !menu_video &&
                          !snap.interface_fill &&
                          (snap.interface_draw || snap.d3d_vertex_buffer == 0 ||
                           snap.has_video_frame());
@@ -7758,7 +7772,28 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
                     last_fill_x_known_ ? last_fill_x_[1] : 0.0f, boxed,
                     !boxed ? "screen" : vx == 0 ? "left" : vx == box_x ? "middle" : "right");
       }
-      use_viewport(snap.d3d_vertex_buffer != 0, vx, vy, vw, vh);
+      // A menu's background video (widescreen.cpp marks it fill while a menu
+      // is shown over it): over the whole frame, the menu's picture of it
+      // then lines up with the menu drawn across the frame on top. Zoomed
+      // evenly until it covers the frame, the rest cropped - or stretched
+      // with XERENGE_MENU_VIDEO=stretch.
+      int32_t view_x = int32_t(vx);
+      int32_t view_y = int32_t(vy);
+      uint32_t view_w = vw;
+      uint32_t view_h = vh;
+      static const bool stretch_menu_video = [] {
+        const char* mode = std::getenv("XERENGE_MENU_VIDEO");
+        return mode != nullptr && std::strcmp(mode, "stretch") == 0;
+      }();
+      if (menu_video && !stretch_menu_video && (box_w != width || box_h != height) &&
+          frame_target) {
+        const double scale = std::max(double(width) / box_w, double(height) / box_h);
+        view_w = uint32_t(std::lround(box_w * scale));
+        view_h = uint32_t(std::lround(box_h * scale));
+        view_x = (int32_t(width) - int32_t(view_w)) / 2;
+        view_y = (int32_t(height) - int32_t(view_h)) / 2;
+      }
+      use_viewport(snap.d3d_vertex_buffer != 0, view_x, view_y, view_w, view_h);
       // The title's scissor, scaled from its render target's pixels to the
       // area that target is drawn over here.
       int32_t sx0 = int32_t(vx), sy0 = int32_t(vy), sx1 = int32_t(vx + vw), sy1 = int32_t(vy + vh);
