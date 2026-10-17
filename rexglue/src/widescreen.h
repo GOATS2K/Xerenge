@@ -28,8 +28,12 @@ uint32_t InterfaceObject();
 // menus' and the revenge meter's renders).
 void EnterInterface();
 void LeaveInterface();
-// ... and around one that draws a single HUD object outside the 2D layer (the
-// revenge meter): numbered like the layer's own, so it goes to its edge too.
+// ... around one whose draws go over the whole frame (DrawingInterfaceFill):
+// the revenge meter, drawn through the race's widened camera.
+void EnterInterfaceFill();
+void LeaveInterfaceFill();
+// ... and around one that draws HUD objects (CGt2dLayer::RenderObjects):
+// numbered, so each goes to its edge.
 void EnterInterfaceObject();
 void LeaveInterfaceObject();
 

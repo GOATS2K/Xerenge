@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -54,6 +55,9 @@ thread_local uint8_t g_element_edge = 0;
 // the renderer can move each object to its edge as a whole.
 thread_local int g_object_depth = 0;
 thread_local uint32_t g_object_serial = 0;
+// The edge of the announcement being drawn (PanelEdge), from its panel, for the
+// elements after it in the same layer; 0 before any panel.
+thread_local uint8_t g_message_edge = 0;
 
 float GuestFloat(const uint8_t* base, uint32_t address) {
   const uint32_t bits = xerenge::LoadGuestU32(base, address);
@@ -114,6 +118,14 @@ void EnterInterface() {
 
 void LeaveInterface() {
   --g_interface_depth;
+}
+
+void EnterInterfaceFill() {
+  ++g_interface_fill_depth;
+}
+
+void LeaveInterfaceFill() {
+  --g_interface_fill_depth;
 }
 
 void EnterInterfaceObject() {
@@ -230,15 +242,65 @@ REX_HOOK_RAW(sub_82353BA8) {
     --g_interface_depth;                                           \
   }
 
+// The HUD is made of components (the position, the player list, the boost
+// bar...), each owning one CGt2dLayer that the title places itself: in
+// CB4HUDComponent::Prepare the layer (+8) is made at the point
+// CB4HUD::GetAlignPos (sub_82188288) gives for the component's alignment
+// (+24) - an index into the table at 825F50C8 of where in the HUD's frame it
+// goes: 0 top-centre, 1 top-left, 2 middle-left, 3 bottom-left, 4
+// bottom-centre, 5 bottom-right, 6 middle-right, 7 top-right, 8 none. The
+// title's own answer to which edge each group belongs to, so the whole layer
+// goes there.
+namespace {
+
+std::mutex g_layer_edges_mutex;
+std::unordered_map<uint32_t, uint8_t> g_layer_edges;
+
+uint8_t AlignEdge(uint32_t align) {
+  constexpr uint8_t kEdges[] = {2, 1, 1, 1, 2, 3, 3, 3};
+  return align < std::size(kEdges) ? kEdges[align] : 0;
+}
+
+uint8_t LayerEdge(uint32_t layer) {
+  std::lock_guard lock(g_layer_edges_mutex);
+  const auto it = g_layer_edges.find(layer);
+  return it == g_layer_edges.end() ? 0 : it->second;
+}
+
+}  // namespace
+
+extern "C" void __imp__sub_821931F8(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_821931F8) {
+  const uint32_t component = ctx.r3.u32;
+  __imp__sub_821931F8(ctx, base);
+  const uint32_t layer = xerenge::LoadGuestU32(base, component + 8);
+  if (layer == 0) {
+    return;
+  }
+  const uint32_t align = xerenge::LoadGuestU32(base, component + 24);
+  const uint8_t edge = AlignEdge(align);
+  {
+    std::lock_guard lock(g_layer_edges_mutex);
+    g_layer_edges[layer] = edge;
+  }
+  if (std::getenv("XERENGE_HUD_LOG")) {
+    REXLOG_INFO("widescreen: component {:08X} layer {:08X} align {} -> {}", component, layer,
+                align, edge == 1 ? "left" : edge == 3 ? "right" : edge == 2 ? "middle" : "unset");
+  }
+}
+
 // CGt2dLayer::RenderObjects - a layer of the HUD: it walks the layer's list
 // of elements and calls each one's render through the pointer the element
 // holds, returning to 0x82353340. The layer is numbered here; each element
 // gets its own number below (ELEMENT_HOOK).
 extern "C" void __imp__sub_82353218(PPCContext& __restrict, uint8_t*);
 REX_HOOK_RAW(sub_82353218) {
+  const uint8_t outer_message_edge = g_message_edge;
+  g_message_edge = 0;
   xerenge::EnterInterfaceObject();
   __imp__sub_82353218(ctx, base);
   xerenge::LeaveInterfaceObject();
+  g_message_edge = outer_message_edge;
 }
 
 // Gt2dRenderer batches the vertices the elements give it in one buffer
@@ -318,11 +380,25 @@ uint8_t StickyEdge(uint32_t node, uint8_t edge) {
   return it->second.edge;
 }
 
+// The announcements (TAKEDOWN!, 6th PLACE ELIMINATED!, a medal) share one
+// layer that no HUD component owns, each laid out around its panel
+// (CB4HUDMessagePanel2dObject, drawn before the rest of it): a point, 2 by
+// 1.5, at x 60 for a takedown's in the top left corner and at 467 to 603 for
+// an elimination's in the middle. The icon, text and stars that follow go
+// where the panel is, together - classified one by one, an elimination's
+// skull went left and its text right.
+uint8_t PanelEdge(const uint8_t* base, uint32_t rect) {
+  const float x = GuestFloat(base, rect) + GuestFloat(base, rect + 8) * 0.5f;
+  // 15%: GREAT boosting!'s panel is at 317, a quarter in, and its message is
+  // centred all the same.
+  return x < kConsoleWidth * 0.15f ? 1 : x > kConsoleWidth * 0.85f ? 3 : 2;
+}
+
 // XERENGE_HUD_LOG: an element's rectangle and edge, when the edge it gets
 // changes (the elements of a race are drawn every frame). The element is its
 // list node (RenderObjects's r31): one render function draws many elements.
 void LogElement(const char* name, uint32_t node, const uint8_t* base, uint32_t rect,
-                uint8_t edge) {
+                uint8_t edge, uint8_t layer_edge) {
   static const bool on = std::getenv("XERENGE_HUD_LOG") != nullptr;
   if (!on) {
     return;
@@ -337,10 +413,11 @@ void LogElement(const char* name, uint32_t node, const uint8_t* base, uint32_t r
     }
     it->second = edge;
   }
-  REXLOG_INFO("widescreen: element {:08X} {} x {:.1f} y {:.1f} w {:.1f} h {:.1f} -> {}", node,
-              name, GuestFloat(base, rect), GuestFloat(base, rect + 4), GuestFloat(base, rect + 8),
-              GuestFloat(base, rect + 12),
-              edge == 1 ? "left" : edge == 3 ? "right" : "middle");
+  REXLOG_INFO("widescreen: element {:08X} {} layer {:08X} x {:.1f} y {:.1f} w {:.1f} h {:.1f} -> {}{}",
+              node, name, xerenge::LoadGuestU32(base, node + 64), GuestFloat(base, rect),
+              GuestFloat(base, rect + 4), GuestFloat(base, rect + 8), GuestFloat(base, rect + 12),
+              edge == 1 ? "left" : edge == 3 ? "right" : "middle",
+              layer_edge != 0 ? " (its component's)" : "");
 }
 
 }  // namespace
@@ -348,8 +425,14 @@ void LogElement(const char* name, uint32_t node, const uint8_t* base, uint32_t r
 // An element's render, numbered as an element only when RenderObjects's loop
 // calls it: the same functions are also called from inside other elements
 // (the boost bar draws its label with CB4HUDText2dObject::_RenderSolidFill),
-// and there they are part of the element calling them.
-#define ELEMENT_HOOK_FULL(name, depth, centred, sticky)                  \
+// and there they are part of the element calling them. In a layer a HUD
+// component anchored, the element goes with its layer - the CGt2dLayer its
+// list node (RenderObjects's r31) holds at +64, whose position and scale
+// RenderObjects places it by; the rules below are for the layers no
+// component owns. (RenderObjects's own r3 is the scene's slot for the list,
+// not a CGt2dLayer.)
+constexpr uint32_t kNodeLayer = 64;
+#define ELEMENT_HOOK_FULL(name, depth, centred, sticky, panel)           \
   extern "C" void __imp__##name(PPCContext& __restrict, uint8_t*);       \
   REX_HOOK_RAW(name) {                                                   \
     if (uint32_t(ctx.lr) != kRenderObjectsLoop) {                        \
@@ -359,31 +442,42 @@ void LogElement(const char* name, uint32_t node, const uint8_t* base, uint32_t r
     FlushVertexBatch(ctx, base);                                         \
     g_object_serial = g_object_serial == ~0u ? 1u : g_object_serial + 1; \
     const uint8_t outer_edge = g_element_edge;                           \
-    g_element_edge = (centred)  ? 2                                      \
+    const uint8_t layer_edge =                                           \
+        LayerEdge(xerenge::LoadGuestU32(base, ctx.r31.u32 + kNodeLayer)); \
+    if (panel) {                                                         \
+      g_message_edge = PanelEdge(base, ctx.r3.u32);                      \
+    }                                                                    \
+    g_element_edge = &depth == &g_interface_fill_depth ? 2               \
+                     : layer_edge != 0                 ? layer_edge      \
+                     : g_message_edge != 0             ? g_message_edge  \
+                     : (centred)                       ? 2               \
                      : (sticky) ? StickyEdge(ctx.r31.u32, EdgeOf(base, ctx.r3.u32)) \
                                 : EdgeOf(base, ctx.r3.u32);              \
-    LogElement(#name, ctx.r31.u32, base, ctx.r3.u32, g_element_edge);    \
+    LogElement(#name, ctx.r31.u32, base, ctx.r3.u32, g_element_edge, layer_edge); \
     ++depth;                                                             \
     __imp__##name(ctx, base);                                            \
     FlushVertexBatch(ctx, base);                                         \
     --depth;                                                             \
     g_element_edge = outer_edge;                                         \
   }
-#define ELEMENT_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, false)
+#define ELEMENT_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, false, false)
 // ... an element that keeps its first edge (StickyEdge).
-#define ELEMENT_STICKY_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, true)
+#define ELEMENT_STICKY_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, false, true, false)
 // ... an element that stays in the middle wherever it is: the announcements
 // (a medal, AWESOME CHECKING!) are laid out as several elements around the
 // middle, and one of them moved to an edge left its text behind.
-#define ELEMENT_CENTRED_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, true, false)
+#define ELEMENT_CENTRED_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, true, false, false)
+// ... an announcement's panel: the elements after it in its layer go where it
+// is (PanelEdge).
+#define ELEMENT_PANEL_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_depth, true, false, true)
 // ... an element drawn across the whole screen.
-#define ELEMENT_FILL_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_fill_depth, true, false)
+#define ELEMENT_FILL_HOOK(name) ELEMENT_HOOK_FULL(name, g_interface_fill_depth, true, false, false)
 
 // The element renders a race's HUD was seen to use (names from Beta 5's
 // symbols, carried over by opcode match).
 ELEMENT_HOOK(sub_8215B940)  // CB4EATrax2dObject::_Render
 ELEMENT_HOOK(sub_82186F30)  // C2dObjectBoostBarMessage::_Render
-ELEMENT_CENTRED_HOOK(sub_82188FF0)  // CB4HUDMessagePanel2dObject::_Render
+ELEMENT_PANEL_HOOK(sub_82188FF0)  // CB4HUDMessagePanel2dObject::_Render
 ELEMENT_CENTRED_HOOK(sub_82189238)  // CB4HUDMessageStars2dObject::_Render
 ELEMENT_HOOK(sub_8218AA90)  // CB4HUDRatingBar::_Render
 ELEMENT_HOOK(sub_8218AFC8)  // CB4HUDRotateImage2dObject::_Render
