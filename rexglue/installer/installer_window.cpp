@@ -149,6 +149,8 @@ lead=$(value spin_lead_ms)
 [ "$(value frame_generation)" = true ] && export XERENGE_FRAME_GENERATION=120
 [ "$(value crash_interpolation)" = false ] && export XERENGE_CRASH_INTERPOLATION=0
 [ "$(value aspect_16_9)" = false ] || export XERENGE_ASPECT_16_9=1
+menu_video=$(value menu_video)
+[ -n "$menu_video" ] && export XERENGE_MENU_VIDEO="$menu_video"
 
 # Fullscreen unless windowed; the keyboard as a pad with its keybind_* lines.
 extra=--fullscreen
@@ -264,6 +266,7 @@ if /i "%fps_30%"=="true" set "XERENGE_FPS_30=1"
 if /i "%frame_generation%"=="true" set "XERENGE_FRAME_GENERATION=120"
 if /i "%crash_interpolation%"=="false" set "XERENGE_CRASH_INTERPOLATION=0"
 if /i not "%aspect_16_9%"=="false" set "XERENGE_ASPECT_16_9=1"
+if defined menu_video set "XERENGE_MENU_VIDEO=%menu_video%"
 
 rem Fullscreen unless windowed; the keyboard as a pad with its keybind_* lines.
 set "extra=--fullscreen"
@@ -1027,6 +1030,9 @@ void InstallerWindow::LoadSettings(const QString& path) {
   if (values.contains("spin_lead_ms")) {
     spin_lead_ms_ = values.value("spin_lead_ms");
   }
+  if (values.contains("menu_video")) {
+    menu_video_ = values.value("menu_video");
+  }
   flag("fps_counter", fps_box_);
   flag("fps_30", fps30_box_);
   flag("frame_generation", framegen_box_);
@@ -1105,6 +1111,9 @@ void InstallerWindow::StartInstall() {
         << "windowed = " << (windowed_box_->isChecked() ? "true" : "false") << "\n"
         << "# The console's 16:9 with black bars on a wider screen; false: the game widens to fill it\n"
         << "aspect_16_9 = " << (aspect_box_->isChecked() ? "true" : "false") << "\n"
+        << "# Widened, the video behind a menu: zoom (fills the width, top and bottom cut),\n"
+        << "# stretch (fills it, too wide) or box (16:9, the menu runs past it into the bars)\n"
+        << "menu_video = " << menu_video_ << "\n"
         << "# The name shown to others online (empty: Player)\n"
         << "gamertag = " << gamertag_edit_->text().trimmed() << "\n"
         << "# Local multiplayer: the copies on one network find each other's games\n"
