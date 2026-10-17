@@ -4671,17 +4671,41 @@ uint32_t PlumeDrawContext::FillVertices(const GuestDrawSnapshot& snap, memory::M
     }
   }
   // An interface draw's extent, for the edge its object is moved to on a
-  // screen wider than 16:9 (EncodeDraws).
-  if (looks_pixel && snap.interface_object != 0 && vertex_count != 0) {
-    float lo = vert(0)[0];
+  // screen wider than 16:9 (EncodeDraws). From the position itself, at
+  // pos_float: the HUD's draws go through the title's own vertex shader
+  // (not passthrough), their position somewhere after the other attributes,
+  // and the vertex's first floats - read as the position, all zeros - kept
+  // every object in the middle of the screen.
+  if (snap.interface_object != 0 && vertex_count != 0 && pos_float + 3 <= kFloatsPerVert) {
+    const float* first = vert(0) + pos_float;
+    float lo = first[0];
     float hi = lo;
-    for (uint32_t vi = 1; vi < vertex_count; ++vi) {
-      lo = std::min(lo, vert(vi)[0]);
-      hi = std::max(hi, vert(vi)[0]);
+    float y_lo = first[1];
+    float y_hi = y_lo;
+    bool pixels = false;
+    for (uint32_t vi = 0; vi < vertex_count; ++vi) {
+      const float* pos = vert(vi) + pos_float;
+      lo = std::min(lo, pos[0]);
+      hi = std::max(hi, pos[0]);
+      y_lo = std::min(y_lo, pos[1]);
+      y_hi = std::max(y_hi, pos[1]);
+      pixels = pixels ||
+               ((std::fabs(pos[0]) > 2.0f || std::fabs(pos[1]) > 2.0f) && std::fabs(pos[2]) < 2.0f);
     }
-    last_fill_x_[0] = lo;
-    last_fill_x_[1] = hi;
-    last_fill_x_known_ = true;
+    // XERENGE_HUD_LOG: the first objects' positions, whatever space they are in.
+    static const bool hud_log = std::getenv("XERENGE_HUD_LOG") != nullptr;
+    static std::atomic<uint32_t> shown{0};
+    if (hud_log && shown.fetch_add(1, std::memory_order_relaxed) < 60) {
+      REXLOG_INFO("plume: hud object {} vs={:016X} {} vertices at float {}, x {:.1f}..{:.1f} "
+                  "y {:.1f}..{:.1f}, target {}x{}, pixels {}, passthrough {}",
+                  snap.interface_object, snap.vs_hash, vertex_count, pos_float, lo, hi, y_lo,
+                  y_hi, snap.d3d_target_width, snap.d3d_target_height, pixels, passthrough);
+    }
+    if (pixels) {
+      last_fill_x_[0] = lo;
+      last_fill_x_[1] = hi;
+      last_fill_x_known_ = true;
+    }
   }
 
   if (passthrough && static_cast<PrimitiveType>(snap.prim_type) == PrimitiveType::kRectangleList &&
@@ -7707,6 +7731,10 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
   // decided by the object's first draw with a known extent, kept for the rest.
   uint32_t anchor_object = 0;
   uint32_t anchor_x = box_x;
+  // XERENGE_HUD_LOG: every interface draw of one frame in 240, as it is placed.
+  static std::atomic<uint32_t> hud_frames{0};
+  const bool hud_sample = std::getenv("XERENGE_HUD_LOG") != nullptr &&
+                          hud_frames.fetch_add(1, std::memory_order_relaxed) % 240 == 0;
   // Draws encoded since the last copy (for the debug-mode pass timings).
   uint32_t segment_draws = 0;
   // ... and the vertices those draws shade, and how often the pipeline changes.
@@ -8256,13 +8284,51 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
       // menus) - in the 16:9 box when the frame is wider. And the video by what
       // it carries: it comes through either path from frame to frame, and
       // drawn by the other one it jumped between the box and the whole width.
+      // An overlay over the console's whole screen (the crash border, the
+      // front end's full-screen flash) is drawn over the whole frame instead.
       const bool boxed = (box_w != width || box_h != height) && vw == width && vh == height &&
+                         !snap.interface_fill &&
                          (snap.interface_draw || snap.d3d_vertex_buffer == 0 ||
                           snap.has_video_frame());
       // The music player's panel keeps its box against the screen's left edge;
       // the HUD's objects go to the edge of their side, each one whole.
       uint32_t vx = 0;
       uint32_t vy = 0;
+      // XERENGE_HUD_LOG: the boxed draws counted by what they carry - the
+      // interface mark, an object, no vertex buffer (inline), a known extent -
+      // for finding where the HUD's objects lose their way to the edges.
+      static const bool hud_log = std::getenv("XERENGE_HUD_LOG") != nullptr;
+      if (hud_log && boxed) {
+        static std::atomic<uint32_t> kinds[16];
+        static std::atomic<uint32_t> boxed_draws{0};
+        const uint32_t kind = (snap.interface_draw ? 1u : 0u) |
+                              (snap.interface_object != 0 ? 2u : 0u) |
+                              (snap.d3d_vertex_buffer == 0 ? 4u : 0u) |
+                              (last_fill_x_known_ ? 8u : 0u);
+        kinds[kind].fetch_add(1, std::memory_order_relaxed);
+        if (boxed_draws.fetch_add(1, std::memory_order_relaxed) % 20000 == 19999) {
+          std::string counts;
+          for (uint32_t k = 0; k < 16; ++k) {
+            if (const uint32_t n = kinds[k].exchange(0, std::memory_order_relaxed)) {
+              counts += fmt::format(" [{}{}{}{}]={}", k & 1 ? "mark " : "", k & 2 ? "object " : "",
+                                    k & 4 ? "inline " : "", k & 8 ? "extent" : "", n);
+            }
+          }
+          REXLOG_INFO("plume: hud boxed draws:{}", counts);
+        }
+      }
+      // ... and the marked interface draws left out of the box (the menus'
+      // pieces running past its edges), with the area they were drawn over.
+      if (hud_log && !boxed && snap.interface_draw && (box_w != width || box_h != height)) {
+        static std::atomic<uint32_t> unboxed{0};
+        const uint32_t n = unboxed.fetch_add(1, std::memory_order_relaxed);
+        if (n < 40 || n % 20000 == 0) {
+          REXLOG_INFO("plume: hud draw not boxed #{}: area {}x{} of {}x{}, target {}x{}, inline {}, "
+                      "object {}",
+                      n, vw, vh, width, height, snap.d3d_target_width, snap.d3d_target_height,
+                      snap.d3d_vertex_buffer == 0, snap.interface_object);
+        }
+      }
       if (boxed) {
         vx = box_x;
         vy = box_y;
@@ -8280,6 +8346,14 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
                        : mid < 0.4f   ? 0
                        : mid > 0.6f   ? width - box_w
                                       : box_x;
+            // XERENGE_HUD_LOG: each object's extent and the edge it went to,
+            // for finding the HUD pieces left in the middle.
+            static std::atomic<uint32_t> hud_logged{0};
+            if (hud_log && hud_logged.fetch_add(1, std::memory_order_relaxed) < 2000) {
+              REXLOG_INFO("plume: hud object {} x {:.0f}..{:.0f} of {:.0f} -> {}",
+                          snap.interface_object, last_fill_x_[0], last_fill_x_[1], guest_w,
+                          anchor_x == 0 ? "left" : anchor_x == box_x ? "middle" : "right");
+            }
           }
           if (snap.interface_object == anchor_object) {
             vx = anchor_x;
@@ -8289,6 +8363,14 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
       if (boxed) {
         vw = box_w;
         vh = box_h;
+      }
+      if (hud_sample && (snap.interface_draw || boxed)) {
+        REXLOG_INFO("plume: hud frame draw object {} vs={:016X} extent {} x {:.0f}..{:.0f} "
+                    "boxed {} -> {}",
+                    snap.interface_object, snap.vs_hash, last_fill_x_known_,
+                    last_fill_x_known_ ? last_fill_x_[0] : 0.0f,
+                    last_fill_x_known_ ? last_fill_x_[1] : 0.0f, boxed,
+                    !boxed ? "screen" : vx == 0 ? "left" : vx == box_x ? "middle" : "right");
       }
       use_viewport(snap.d3d_vertex_buffer != 0, vx, vy, vw, vh);
       // The title's scissor, scaled from its render target's pixels to the
