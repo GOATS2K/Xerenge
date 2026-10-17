@@ -230,12 +230,14 @@ jobs:
           echo "sdk=$(git ls-remote https://github.com/shipa-2/rexglue-xerenge.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
           echo "plume=$(git ls-remote https://github.com/shipa-2/plume-xerenge.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
           echo "xenos=$(git ls-remote https://github.com/shipa-2/XenosRecomp-xerenge.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+          # The runner image: a new one brings a new MSVC, and the precompiled headers of a build made with the old one no longer load.
+          echo "image=${ImageVersion:-none}" >> "$GITHUB_OUTPUT"
 
       - name: Cache the SDK checkout and build
         uses: actions/cache@v4
         with:
           path: rexglue-sdk
-          key: sdk-win-amd64-${{ steps.pins.outputs.sdk }}
+          key: sdk-win-amd64-${{ steps.pins.outputs.image }}-${{ steps.pins.outputs.sdk }}
 
       - name: SDK
         run: ./scripts/setup-sdk.sh
@@ -246,7 +248,7 @@ jobs:
           path: |
             plume
             XenosRecomp
-          key: deps-win-amd64-${{ steps.pins.outputs.plume }}-${{ steps.pins.outputs.xenos }}
+          key: deps-win-amd64-${{ steps.pins.outputs.image }}-${{ steps.pins.outputs.plume }}-${{ steps.pins.outputs.xenos }}
 
       - name: plume and XenosRecomp
         run: ./scripts/setup-deps.sh
