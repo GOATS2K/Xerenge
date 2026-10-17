@@ -906,6 +906,7 @@ void TakeDrawState(rex::system::IGraphicsSystem::GuestDrawBuffers& buffers) {
   buffers.from_interface = xerenge::DrawingInterface();
   buffers.interface_left = xerenge::DrawingInterfaceLeft();
   buffers.interface_fill = xerenge::DrawingInterfaceFill();
+  buffers.interface_edge = xerenge::InterfaceEdge();
   buffers.interface_object = xerenge::InterfaceObject();
   std::lock_guard lock(g_state_mutex);
   buffers.vertex_shader_object = g_state.vertex_shader;
@@ -1188,6 +1189,7 @@ REX_HOOK_RAW(D3DDevice_DrawIndexedVertices) {
     buffers.from_interface = xerenge::DrawingInterface();
     buffers.interface_left = xerenge::DrawingInterfaceLeft();
     buffers.interface_fill = xerenge::DrawingInterfaceFill();
+    buffers.interface_edge = xerenge::InterfaceEdge();
     buffers.interface_object = xerenge::InterfaceObject();
     // The target's size, as TakeDrawState gives the other draws: without it
     // the reflection's faces - 128x128 targets, all of them indexed draws -
