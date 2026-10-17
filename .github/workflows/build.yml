@@ -794,17 +794,15 @@ jobs:
 
           **macOS** (Apple silicon): download `Burnout_Revenge_Installer-macos-arm64.zip`, unzip it and run the app inside. It puts `Burnout Revenge.app` in `~/Applications`, so the game starts from Launchpad or Spotlight. The app is signed ad hoc, so macOS stops it the first time it is opened after a download; allow it under System Settings, Privacy & Security, Open Anyway. The installed game logs to `~/Library/Logs/xerenge-burnout/`. An Intel build is on the way, held up only by a long CI queue for that runner - it'll follow in a later release.
 
-          **Online play works out of the box** - the installer already points at a shared lobby server (`94639.snk.wtf`), so you do not need to run your own. **Your own online server, if you want one instead:** `ealobby-linux-amd64` or `ealobby-win-amd64.exe` is a lobby server for the online mode. Run it on a machine whose TCP ports 31860 and 31861 the players can reach, and point the installer's "Server address" field at it (or start the game with `--lobby-server=<that machine>`).
+          **Online play works out of the box** - the installer already points at a shared lobby server (`94639.snk.wtf`), so you do not need to run your own. **Your own online server, if you want one instead:** `ealobby-linux-amd64` or `ealobby-win-amd64.exe` is a lobby server for the online mode. Run it on a machine whose TCP ports 31860, 31861 and 31862 (clips) the players can reach, and point the installer's "Server address" field at it (or start the game with `--lobby-server=<that machine>`).
 
-          **0.4.6 is an emergency hotfix for Android** (GitHub #4: a black screen or a hang right after loading on many phones):
-          - Phones with a Linux kernel older than 4.17 (most Android 10 and older devices: Snapdragon 845/660, Helio G80, Kirin 960...) crashed while starting the game: guest memory was mapped at the wrong address. Fixed in the SDK.
-          - ARMv8.0 CPUs (Snapdragon 660, Kirin 960: Cortex-A73/A53) stopped at start with an illegal instruction; the APK is now built for ARMv8.0, with atomics chosen at run time.
-          - Adreno 5xx (Redmi Note 7 and the like): textures came out as black and grey slabs and cars were invisible - BC textures are re-encoded as ETC2 where the GPU lacks them, and its broken depth clamp is avoided. A new hack, "Textures as ETC2", forces the re-encoding on any GPU.
-          - Vertex inputs fit the 16 a Mali-G71 takes (its GPU hung at the first frame).
-          - **Vulkan 1.0 drivers** (old Mali) can now start the game, but this is not fully tested yet: a Mali-G71 still shows a black screen.
-          - An unhandled crash no longer spins and fills the log with one line; it is logged once, with where it happened.
-          - The installer has a log folder, chosen like the disc image: the logs are copied there, since the app's own folder cannot be opened from a file manager.
-          - On-screen controls: a layout editor (drag and resize every button, the stick and the menu button; Done saves it, Reset restores it) and Xbox View/Menu glyphs for Back and Start, from PredatorWoah's XerengePlus fork.
+          **What's new in 0.4.7:**
+          - **The American release is supported** (GitHub #21, thanks to its author): the installer takes either disc image. Ultrawide and the logo skip work on both.
+          - **Online with three players and more** (GitHub #19): the third player no longer drops everyone or hangs on "Returning from game"; a host leaving closes the game for all.
+          - **Burnout Clips online**: clips are shared to the lobby server (port 31862 TCP), and the Top 20 and the recent players' clips show them. Clip thumbnails are still black.
+          - **Mali and other phones without BC textures** (GitHub #20, #22): re-encoded ETC2 textures are cached on disk, and "Textures as ETC2" in the installer prepares all of them ahead - no more stutter while textures are re-encoded in a race.
+          - Vertex cache fixes and draws finished on the worker thread (GitHub #15, #16, thanks to xenophobentx).
+          - plume is the default renderer; music plays in Replay after a race.
 
           EOF
           gh release create "v$VERSION" --title "$VERSION" --latest --target "$GITHUB_SHA" \
