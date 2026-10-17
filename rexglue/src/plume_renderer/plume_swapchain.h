@@ -30,6 +30,10 @@ class RenderTexture;
 
 namespace rex::plume_renderer {
 
+// The guest frame now going to the screen: its number and when the title
+// swapped it (milliseconds since 1970), for the XERENGE_HUD_LOG clock.
+void NoteGuestSwap(uint64_t frame, int64_t unix_ms);
+
 // Depth buffer format for the presentation framebuffer. Pipelines that enable
 // depth have to declare the same one, so both sides read it from here.
 inline constexpr plume::RenderFormat kPlumeDepthFormat = plume::RenderFormat::D32_FLOAT;

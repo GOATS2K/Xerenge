@@ -6,6 +6,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <mutex>
 #include "plume_renderer/plume_swapchain.h"
 
 #include "diagnostics.h"
@@ -42,53 +45,122 @@ bool FpsShown() {
   return shown;
 }
 
-// The counter, drawn as seven-segment digits made of cleared rectangles: no
-// font, no texture and no pipeline, so it costs nothing to draw and cannot
-// be broken by whatever the frame itself went through. Drawn into the
-// framebuffer bound when called.
-void DrawFpsCounter(plume::RenderCommandList* list, uint32_t height, uint32_t fps) {
+// XERENGE_HUD_LOG: the clock (DrawGuestClock) beside the HUD's log.
+bool ClockShown() {
+  static const bool shown = std::getenv("XERENGE_HUD_LOG") != nullptr;
+  return shown;
+}
+
+// A readout - digits, ':', '.' and ' ' - drawn as seven-segment digits made of
+// cleared rectangles: no font, no texture and no pipeline, so it costs nothing
+// to draw and cannot be broken by whatever the frame itself went through.
+// Yellow on a black box whose top left is (left, top), into the framebuffer
+// bound when called. The digits are 18 px high at 540 lines, in proportion.
+void DrawReadout(plume::RenderCommandList* list, uint32_t height, int32_t left, int32_t top,
+                 const char* text) {
   // Segments a (top) to g (middle), clockwise from the top as usual.
   static constexpr uint8_t kDigitSegments[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66,
                                                  0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+  constexpr int kMaxLength = 32;
   const int32_t scale = std::max<int32_t>(1, int32_t(height) / 540);
   const int32_t digit_w = 10 * scale;
   const int32_t digit_h = 18 * scale;
   const int32_t stroke = 2 * scale;
   const int32_t gap = 4 * scale;
   const int32_t margin = 6 * scale;
+  const auto width_of = [&](char c) {
+    return c == ':' || c == '.' ? stroke : c == ' ' ? digit_w / 2 : digit_w;
+  };
 
-  char text[8];
-  const int length = std::snprintf(text, sizeof(text), "%u", std::min(fps, 999u));
-  const int32_t box_w = margin * 2 + length * digit_w + (length - 1) * gap;
-  const int32_t box_h = margin * 2 + digit_h;
-  const plume::RenderRect box(0, 0, box_w, box_h);
+  const int length = int(std::min<size_t>(std::strlen(text), kMaxLength));
+  if (length == 0) {
+    return;
+  }
+  int32_t text_w = (length - 1) * gap;
+  for (int i = 0; i < length; ++i) {
+    text_w += width_of(text[i]);
+  }
+  const plume::RenderRect box(left, top, left + margin * 2 + text_w, top + margin * 2 + digit_h);
   list->clearColor(0, plume::RenderColor(0.0f, 0.0f, 0.0f, 1.0f), &box, 1);
 
-  plume::RenderRect segments[3 * 7];
+  plume::RenderRect segments[kMaxLength * 7];
   uint32_t count = 0;
+  int32_t x = left + margin;
+  const int32_t y = top + margin;
+  const int32_t mid = y + digit_h / 2;
   for (int i = 0; i < length; ++i) {
-    const uint8_t on = kDigitSegments[text[i] - '0'];
-    const int32_t x = margin + i * (digit_w + gap);
-    const int32_t y = margin;
-    const int32_t mid = y + digit_h / 2;
-    const plume::RenderRect shapes[7] = {
-        {x, y, x + digit_w, y + stroke},                                // a
-        {x + digit_w - stroke, y, x + digit_w, mid},                    // b
-        {x + digit_w - stroke, mid, x + digit_w, y + digit_h},          // c
-        {x, y + digit_h - stroke, x + digit_w, y + digit_h},            // d
-        {x, mid, x + stroke, y + digit_h},                              // e
-        {x, y, x + stroke, mid},                                        // f
-        {x, mid - stroke / 2, x + digit_w, mid - stroke / 2 + stroke},  // g
-    };
-    for (int s = 0; s < 7; ++s) {
-      if (on & (1u << s)) {
-        segments[count++] = shapes[s];
+    const char c = text[i];
+    if (c == ':') {
+      segments[count++] = {x, y + digit_h / 3 - stroke, x + stroke, y + digit_h / 3};
+      segments[count++] = {x, y + digit_h * 2 / 3, x + stroke, y + digit_h * 2 / 3 + stroke};
+    } else if (c == '.') {
+      segments[count++] = {x, y + digit_h - stroke, x + stroke, y + digit_h};
+    } else if (c >= '0' && c <= '9') {
+      const uint8_t on = kDigitSegments[c - '0'];
+      const plume::RenderRect shapes[7] = {
+          {x, y, x + digit_w, y + stroke},                                // a
+          {x + digit_w - stroke, y, x + digit_w, mid},                    // b
+          {x + digit_w - stroke, mid, x + digit_w, y + digit_h},          // c
+          {x, y + digit_h - stroke, x + digit_w, y + digit_h},            // d
+          {x, mid, x + stroke, y + digit_h},                              // e
+          {x, y, x + stroke, mid},                                        // f
+          {x, mid - stroke / 2, x + digit_w, mid - stroke / 2 + stroke},  // g
+      };
+      for (int s = 0; s < 7; ++s) {
+        if (on & (1u << s)) {
+          segments[count++] = shapes[s];
+        }
       }
     }
+    x += width_of(c) + gap;
   }
   if (count != 0) {
     list->clearColor(0, plume::RenderColor(1.0f, 1.0f, 0.0f, 1.0f), segments, count);
   }
+}
+
+// The counter, in the top left corner.
+void DrawFpsCounter(plume::RenderCommandList* list, uint32_t height, uint32_t fps) {
+  char text[8];
+  std::snprintf(text, sizeof(text), "%u", std::min(fps, 999u));
+  DrawReadout(list, height, 0, 0, text);
+}
+
+// The guest frame on screen (NoteGuestSwap): when the title swapped it, to the
+// millisecond in local time, and its number - the one XERENGE_CAPTURE_FRAME
+// counts. The log's lines come from the title's thread, which also swaps, so
+// those stamped after the previous frame's time and up to this one's are the
+// ones written while this frame was made.
+std::mutex g_guest_swap_mutex;
+uint64_t g_guest_swap_frame = 0;
+int64_t g_guest_swap_unix_ms = 0;
+
+// At the left edge, halfway down: no HUD component is anchored there (they
+// use the corners and the top and bottom centres), so it hides nothing that
+// is being looked at.
+void DrawGuestClock(plume::RenderCommandList* list, uint32_t height) {
+  uint64_t frame;
+  int64_t unix_ms;
+  {
+    std::lock_guard lock(g_guest_swap_mutex);
+    frame = g_guest_swap_frame;
+    unix_ms = g_guest_swap_unix_ms;
+  }
+  if (frame == 0) {
+    return;
+  }
+  const std::time_t seconds = std::time_t(unix_ms / 1000);
+  std::tm local{};
+#if defined(_WIN32)
+  localtime_s(&local, &seconds);
+#else
+  localtime_r(&seconds, &local);
+#endif
+  char text[32];
+  std::snprintf(text, sizeof(text), "%02d:%02d:%02d.%03d %llu", local.tm_hour, local.tm_min,
+                local.tm_sec, int(unix_ms % 1000), static_cast<unsigned long long>(frame));
+  const int32_t scale = std::max<int32_t>(1, int32_t(height) / 540);
+  DrawReadout(list, height, 0, int32_t(height) / 2 - 15 * scale, text);
 }
 
 // XERENGE_RENDER_RESOLUTION=WIDTHxHEIGHT (run.sh --render-resolution): the size
@@ -1140,10 +1212,15 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
   }
 
   const uint32_t fps = FpsShown() ? CountFps() : 0;
-  if (FpsShown() && !scene_texture_) {
-    // Drawn straight into the swap chain image: the counter goes on last.
+  if ((FpsShown() || ClockShown()) && !scene_texture_) {
+    // Drawn straight into the swap chain image: the readouts go on last.
     command_list_->setFramebuffer(draw_framebuffer);
-    DrawFpsCounter(command_list_.get(), height, fps);
+    if (FpsShown()) {
+      DrawFpsCounter(command_list_.get(), height, fps);
+    }
+    if (ClockShown()) {
+      DrawGuestClock(command_list_.get(), height);
+    }
   }
   // Closing the pass is what makes copying out of the target legal: while it
   // is bound for writing, moving it to a copy source is not.
@@ -1245,12 +1322,17 @@ void PlumeSwapchain::ClearAndPresent(float r, float g, float b, float a, DrawEnc
     }
     // On the image shown, after the copy: drawn into the target, the counter
     // would go wherever the title copies that target to.
-    if (FpsShown()) {
+    if (FpsShown() || ClockShown()) {
       out->barriers(plume::RenderBarrierStage::GRAPHICS,
                     plume::RenderTextureBarrier(swapchain_texture,
                                                 plume::RenderTextureLayout::COLOR_WRITE));
       out->setFramebuffer(framebuffer);
-      DrawFpsCounter(out, window_height, fps);
+      if (FpsShown()) {
+        DrawFpsCounter(out, window_height, fps);
+      }
+      if (ClockShown()) {
+        DrawGuestClock(out, window_height);
+      }
       out->setFramebuffer(nullptr);
     }
   }
@@ -1350,6 +1432,12 @@ float PlumeSwapchain::DisplayRefreshHz() const {
   const SDL_DisplayID display = SDL_GetDisplayForWindow(window_);
   const SDL_DisplayMode* mode = display ? SDL_GetCurrentDisplayMode(display) : nullptr;
   return mode ? mode->refresh_rate : 0.0f;
+}
+
+void NoteGuestSwap(uint64_t frame, int64_t unix_ms) {
+  std::lock_guard lock(g_guest_swap_mutex);
+  g_guest_swap_frame = frame;
+  g_guest_swap_unix_ms = unix_ms;
 }
 
 }  // namespace rex::plume_renderer

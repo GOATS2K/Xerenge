@@ -1822,6 +1822,11 @@ void PlumeGraphicsSystem::PresentGuestFrame(uint32_t width, uint32_t height) {
 #if defined(__ANDROID__)
   g_title_tid.store(int(gettid()), std::memory_order_relaxed);
 #endif
+  // When the title swapped, before the pacing below waits: everything it
+  // logged up to here went into this frame.
+  const int64_t swapped_unix_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count();
   PaceSwapToVblank();
   last_present_ms_.store(static_cast<uint64_t>(
                              std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1982,6 +1987,9 @@ void PlumeGraphicsSystem::PresentGuestFrame(uint32_t width, uint32_t height) {
       }
       present_in_flight_ = true;
     }
+    // Only now: the previous frame has gone, so the clock never runs ahead of
+    // the picture it is drawn over.
+    NoteGuestSwap(presented_frame, swapped_unix_ms);
     {
       std::lock_guard lock(present_request_mutex_);
       present_request_width_ = width;
@@ -1993,6 +2001,7 @@ void PlumeGraphicsSystem::PresentGuestFrame(uint32_t width, uint32_t height) {
   }
 
   // Fallback for synchronous present.
+  NoteGuestSwap(presented_frame, swapped_unix_ms);
   PresentClearColorOnUiThread(width, height);
 }
 
