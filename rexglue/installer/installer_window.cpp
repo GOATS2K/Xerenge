@@ -295,7 +295,9 @@ if defined log_path set "logs=%log_path%"
 if not exist "%logs%" mkdir "%logs%"
 
 cd /d "%dir%"
-start "" "%dir%bin\burnout.exe" ^
+rem /wait: the launcher lives as long as the game, so Steam (a non-Steam
+rem shortcut to this file) keeps Steam Input on for it.
+start "" /wait "%dir%bin\burnout.exe" ^
     --game_data_root "%dir%game" ^
     --gpu_plugin %renderer% ^
     --gpu_backend %renderer% ^
