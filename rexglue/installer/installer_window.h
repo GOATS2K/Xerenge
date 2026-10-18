@@ -73,7 +73,7 @@ class InstallerWindow : public QWidget {
   QCheckBox* blur_box_ = nullptr;
   QCheckBox* xenia_box_ = nullptr;
   // The language set ahead of time (XERENGE_LANGUAGE), windowed, the hacks.
-  // The network tab: the name shown to others, local multiplayer, a server of your own.
+  // The network tab: the name shown to others, local multiplayer, the online server.
   QLineEdit* gamertag_edit_ = nullptr;
   QCheckBox* online_box_ = nullptr;
   QLineEdit* server_edit_ = nullptr;

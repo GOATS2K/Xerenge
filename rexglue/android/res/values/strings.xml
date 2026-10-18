@@ -72,7 +72,7 @@
     <string name="local_multiplayer_tip">Turns the online menus on. Every copy of the game on your network runs a lobby of its own; the games one player creates show up for the others, and any player can host.</string>
     <string name="server_address">Server address</string>
     <string name="server_placeholder">empty: no server, local multiplayer only</string>
-    <string name="server_tip">The host or IP of a lobby server of your own (the release carries one). With an address the game plays online through that server, and local multiplayer is off.</string>
+    <string name="server_tip">The online server, 94639.snk.wtf: everyone plays there. With an address the game plays online through that server, and local multiplayer is off.</string>
     <string name="server_note">Playing online through the server %1$s; local multiplayer is off.</string>
     <string name="local_note">Local multiplayer finds the games of the other copies on your network. To play through a server, enter its address.</string>
     <string name="touch_controls">On-screen controls</string>

@@ -819,7 +819,7 @@ InstallerWindow::InstallerWindow(QWidget* parent) : QWidget(parent) {
   });
   tabs->addTab(keys_page, tr("Controls"));
 
-  // The network tab, second: the name shown to others, local multiplayer, and a server of your own.
+  // The network tab, second: the name shown to others, local multiplayer, and the online server.
   auto* network_page = new QWidget;
   auto* network_layout = new QVBoxLayout(network_page);
   auto* gamertag_row = new QHBoxLayout;
@@ -843,11 +843,11 @@ InstallerWindow::InstallerWindow(QWidget* parent) : QWidget(parent) {
   server_row->addWidget(new QLabel(tr("Server address")));
   server_edit_ = new QLineEdit;
   server_edit_->setPlaceholderText(tr("empty: no server, local multiplayer only"));
-  // Filled in on a new install (an installed copy that has its own lobby_server line, empty or not, keeps that).
+  // Filled in on a new install, and over an empty address of an installed copy.
   server_edit_->setText(QStringLiteral("94639.snk.wtf"));
   server_edit_->setValidator(
       new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9._-]*"), server_edit_));
-  server_edit_->setToolTip(tr("The host or IP of a lobby server of your own (the release carries one). "
+  server_edit_->setToolTip(tr("The online server, 94639.snk.wtf: everyone plays there. "
                               "With an address the game plays online through that server, and local "
                               "multiplayer is off."));
   server_row->addWidget(server_edit_, 1);
@@ -1002,7 +1002,9 @@ void InstallerWindow::LoadSettings(const QString& path) {
     gamertag_edit_->setText(values.value("gamertag"));
   }
   flag("online", online_box_);
-  if (values.contains("lobby_server")) {
+  // An empty address (an install from before the server, or one cleared) is moved to
+  // the server: everyone plays on the one server.
+  if (!values.value("lobby_server").trimmed().isEmpty()) {
     server_edit_->setText(values.value("lobby_server"));
   }
   flag("async_present", async_box_);
@@ -1114,7 +1116,7 @@ void InstallerWindow::StartInstall() {
         << ((server_edit_->text().trimmed().isEmpty() ? online_box_->isChecked() : online_saved_) ? "true"
                                                                                                     : "false")
         << "\n"
-        << "# A server of your own (host or IP); set, it is the only lobby and local multiplayer is off\n"
+        << "# The online server (host or IP); set, it is the only lobby and local multiplayer is off\n"
         << "lobby_server = " << server_edit_->text().trimmed() << "\n"
         << "# The language set ahead of time (empty: the game asks at every start)\n"
         << "language = " << language_combo_->currentData().toString() << "\n"

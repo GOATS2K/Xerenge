@@ -190,7 +190,9 @@ final class Settings {
             settings.gamertag = v.get("gamertag");
         }
         settings.online = flag(v, "online", settings.online);
-        if (v.containsKey("lobby_server")) {
+        // An empty address (an install from before the server, or one cleared) is
+        // moved to the server: everyone plays on the one server.
+        if (v.containsKey("lobby_server") && !v.get("lobby_server").trim().isEmpty()) {
             settings.lobbyServer = v.get("lobby_server");
         }
         settings.asyncPresent = flag(v, "async_present", settings.asyncPresent);
@@ -280,7 +282,7 @@ final class Settings {
            .append("gamertag = ").append(gamertag.trim()).append('\n')
            .append("# Local multiplayer: the copies on one network find each other's games\n")
            .append("online = ").append(tf(online)).append('\n')
-           .append("# A server of your own (host or IP); set, it is the only lobby and local multiplayer is off\n")
+           .append("# The online server (host or IP); set, it is the only lobby and local multiplayer is off\n")
            .append("lobby_server = ").append(lobbyServer.trim()).append('\n')
            .append("# The language set ahead of time (empty: the game asks at every start)\n")
            .append("language = ").append(language).append('\n')

@@ -390,8 +390,8 @@ textures and every constant buffer.
 
 EA's lobby servers are gone, so the online mode brings its own. Start the game with `--real-lobby`
 (`./run.sh --real-lobby --gamertag=Name`). An installed copy sets this on the installer's **Network** tab:
-the Gamertag, **Local multiplayer** (the mode below), and a **Server address** (prefilled with `94639.snk.wtf` on a new install; the self-hosted server below; with
-it set, local multiplayer is off). They are kept in `xerenge.conf` as `gamertag`, `online` and `lobby_server`.
+the Gamertag, **Local multiplayer** (the mode below), and a **Server address** (`94639.snk.wtf`, the server everyone plays on; an
+empty one is filled in again when the installer runs; with it set, local multiplayer is off). They are kept in `xerenge.conf` as `gamertag`, `online` and `lobby_server`.
 
 **On one network, with no server anywhere.** Every copy runs a lobby of its own and the copies find each other on
 the LAN (UDP 31859). A game one player creates shows up in everyone else's Custom Match search and Quick Match; a
@@ -399,18 +399,6 @@ player who joins stays connected to their own lobby, which carries the game's tr
 host, and nobody has to start first. Two copies on one machine need their own addresses:
 `--online-address=127.0.0.2` and `--online-address=127.0.0.3`.
 
-**A server of your own** (at home, or on a VPS, for players who are not on one network). The release carries
-`ealobby-linux-amd64` and `ealobby-win-amd64.exe`; from a checkout, `rexglue/lobby.sh` builds and runs the same
-server (a C++17 compiler is all it needs):
-
-```
-./lobby.sh                          # ports 31860 and 31861, TCP
-./run.sh --real-lobby --lobby-server=<address of that machine>
-```
-
-With `--lobby-server` the server is the only lobby: the copies do not start lobbies of their own, every game on it
-is found by every player, and it keeps running when a player quits. Options: `--host`, `--directory-port`,
-`--lobby-port`, `--advertise <the address players should reach it at>`.
 
 ## When something is wrong
 
