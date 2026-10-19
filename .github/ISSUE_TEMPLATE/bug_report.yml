@@ -8,8 +8,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Xerenge version and disc
-      placeholder: "0.4.7, European disc"
+      label: Build (artifact run or commit), the release it is based on, and the disc
+      placeholder: "Actions run #512 (commit 22dad21), based on 0.4.7, European disc"
     validations:
       required: true
   - type: textarea

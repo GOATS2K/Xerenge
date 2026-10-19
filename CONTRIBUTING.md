@@ -7,16 +7,21 @@ at **many times later** than a complete one - or closed if the details never com
 
 ## Before you open an issue
 
-- Update to the [latest release](https://github.com/shipa-2/Xerenge/releases/latest)
-  and check that the problem is still there.
+- Update to the **latest build artifact** and check that the problem is still there. Open
+  [Actions](https://github.com/shipa-2/Xerenge/actions/workflows/build.yml?query=branch%3Amain+is%3Asuccess),
+  take the newest successful run on `main` and download the installer for your system from its
+  Artifacts (you need to be signed in to GitHub; artifacts are kept for 7 days). It is newer than
+  the [latest release](https://github.com/shipa-2/Xerenge/releases/latest): many problems are
+  already fixed there.
 - Search the [open and closed issues](https://github.com/shipa-2/Xerenge/issues?q=is%3Aissue):
   it may already be known, with a workaround.
 - One problem per issue.
 
 ## What a bug report must have
 
-1. **The version** of Xerenge (from the release you installed) and the disc:
-   European or American.
+1. **The build:** the artifact you installed - the run's number or commit from the Actions page -
+   and the release it is based on (the `VERSION` at that commit, e.g. 0.4.7); or the release, if
+   you could not use an artifact. And the disc: European or American.
 2. **The system and the hardware:** OS and its version; CPU; GPU and its driver
    version. On Android: the phone model, the chip (e.g. Snapdragon 8 Gen 2), the
    Android version and whether a Turnip driver is used.
