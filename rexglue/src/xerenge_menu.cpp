@@ -42,6 +42,7 @@ extern "C" void sub_8242C678(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_821C84A8(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_821C7588(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_821E6928(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_822ADE70(PPCContext& __restrict, uint8_t*);
 bool XerengeCanRestart();
 void XerengeRestartGame();
 
@@ -279,12 +280,30 @@ REX_HOOK_RAW(sub_821EC580) {
 }
 
 // The movie the interface loads next: the screen on show.
+//
+// GitHub #29: leaving a reward video's screen (a challenge complete, a rank
+// up...) the soundtrack, paused for the video (sub_821F50F8), is resumed. The
+// game resumes it only when the interface's video has played to its end
+// (sub_822ADEE8 waits for that), and skipping one with START leaves it playing
+// unseen - the music came back a minute or two later, the video's length.
 REX_HOOK_RAW(sub_821E6BA8) {
   const uint32_t requested = LoadU32(base, ctx.r3.u32 + 20);
   __imp__sub_821E6BA8(ctx, base);
   if (requested) {
-    g_on_settings = IsSettings(GuestString(base, requested));
-    REXLOG_INFO("menu: interface takes the movie {}", GuestString(base, requested));
+    static std::string on_show;
+    const std::string next = GuestString(base, requested);
+    g_on_settings = IsSettings(next);
+    constexpr uint32_t kMusic = 0x8268748C;  // the soundtrack's state; +780: paused for a video
+    const bool left_video = on_show.size() > 5 && on_show.compare(on_show.size() - 5, 5, "Video") == 0 &&
+                            next != on_show;
+    if (left_video && LoadU32(base, kMusic + 780) != 0) {
+      REXLOG_INFO("menu: music resumed, leaving {}", on_show);
+      const PPCContext saved = ctx;
+      ctx.r3.u64 = kMusic;
+      sub_822ADE70(ctx, base);
+      ctx = saved;
+    }
+    on_show = next;
   }
 }
 

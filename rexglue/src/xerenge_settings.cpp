@@ -14,6 +14,7 @@
 
 REXCVAR_DECLARE(std::string, game_data_root);
 REXCVAR_DECLARE(std::string, lobby_server);
+REXCVAR_DECLARE(std::string, gamertag);
 
 void XerengeSetMenuAntiAliasing(int32_t mode);
 void XerengeSetMenuSharpening(float strength);
@@ -230,10 +231,14 @@ std::vector<Row> Rows(Page page) {
       const auto found = conf.find(key);
       return found == conf.end() ? std::string() : found->second;
     };
-    std::string gamertag = value("gamertag");
-    std::string server = value("lobby_server");
+    // As the game runs with them (its arguments), else as xerenge.conf has them.
+    std::string gamertag = REXCVAR_GET(gamertag);
+    if (gamertag.empty()) {
+      gamertag = value("gamertag");
+    }
+    std::string server = REXCVAR_GET(lobby_server);
     if (server.empty()) {
-      server = REXCVAR_GET(lobby_server);
+      server = value("lobby_server");
     }
     rows.push_back({"GAMERTAG: " + (gamertag.empty() ? std::string("PLAYER") : gamertag), {}, 0});
     rows.push_back({"SERVER: " + (server.empty() ? std::string("NONE") : server), {}, 0});

@@ -195,3 +195,4 @@ REX_HOOK_RAW(sub_822CB488) {
   last_caller = ctx.lr;
   __imp__sub_822CB488(ctx, base);
 }
+
