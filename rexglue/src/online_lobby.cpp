@@ -166,4 +166,22 @@ void StartLobbyNetwork() {
   }
 }
 
+std::string LobbyServerAddress() {
+  const std::string configured = REXCVAR_GET(lobby_server);
+  const std::string host = configured.substr(0, configured.find(':'));
+  if (host.empty()) {
+    return {};
+  }
+  // Resolved once, on the first call.
+  static const std::string address = [&host] {
+#ifdef _WIN32
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
+    const uint32_t resolved = Resolve(host);
+    return resolved ? ToString(resolved) : host;
+  }();
+  return address;
+}
+
 }  // namespace xerenge::online

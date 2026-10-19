@@ -24,6 +24,7 @@
 #include <rex/ppc.h>
 #include "ealobby/aries.h"
 #include "guest_memory.h"
+#include "online_lobby.h"
 
 REXCVAR_DECLARE(bool, online);
 REXCVAR_DECLARE(std::string, lobby_server);
@@ -285,11 +286,13 @@ REX_HOOK_RAW(sub_82230B70) {
 // (locker.h). A copy's own lobby has none: clips are shared through a server.
 // "host:port", or "" without one.
 std::string LockerHost() {
-  const std::string server = REXCVAR_GET(lobby_server);
+  // An address, not the name: the title cannot look a name up (its DNS lookup answers
+  // nothing) - with the name the Locker is never reached (likely issue #24).
+  const std::string server = xerenge::online::LobbyServerAddress();
   if (!Online() || server.empty()) {
     return {};
   }
-  return server.substr(0, server.find(':')) + ":31862";
+  return server + ":31862";
 }
 
 // LockerApiCreate(host, callback, ref): without a host the Locker is EA's,
