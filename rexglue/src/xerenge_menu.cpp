@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <string>
 
@@ -40,6 +41,9 @@ extern "C" void sub_821AD188(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_8242C678(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_821C84A8(PPCContext& __restrict, uint8_t*);
 extern "C" void sub_821C7588(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_821E6928(PPCContext& __restrict, uint8_t*);
+bool XerengeCanRestart();
+void XerengeRestartGame();
 
 namespace {
 
@@ -188,10 +192,68 @@ void XerengeMenuRegisterNatives(PPCContext& ctx, uint8_t* base, uint32_t object)
   ctx = saved;
 }
 
+// The restart popup, when Settings is left after our pages changed something
+// that takes effect at a start: the game's own popup (the one a failed
+// connection to EA's servers shows), asked for through sub_821E6928 on the
+// popup service ([0x82A52288]) with a callback of ours, which the service
+// calls with the button pressed (sub_821EE6F8). A starts the game again (its
+// launcher reads xerenge.conf anew); B leaves Settings as back would have.
+namespace {
+
+constexpr uint32_t kPopupService = 0x82A52288;  // holds the service's address
+constexpr uint32_t kEmptyTitle = 0x82010E58;    // "", the title the game's popups have
+constexpr uint32_t kPopupButtons = 4;           // ePopupType_YesNo (Cafe.bin's popup manager): A and B
+bool g_visited_pages = false;                   // our pages were opened since Settings was
+bool g_popup_pending = false;                   // the popup to ask for at the next frame
+
+void RestartAnswer(PPCContext& ctx, uint8_t* base) {
+  const uint32_t button = ctx.r3.u32;
+  REXLOG_INFO("menu: restart popup answered with button {}", button);
+  if (button == 2) {  // Yes, the A button, in a YesNo popup
+    XerengeRestartGame();
+  }
+  // Cancelled (or the restart could not start): leave Settings as back does.
+  const PPCContext saved = ctx;
+  ctx.r3.u64 = LoadU32(base, kMenuService);
+  ctx.r4.u64 = uint32_t(-1);
+  __imp__sub_821EC580(ctx, base);
+  ctx = saved;
+}
+
+bool ShowRestartPopup(PPCContext& ctx, uint8_t* base) {
+  static uint32_t answer = 0, message = 0;
+  if (!answer) {
+    answer = rex::Runtime::instance()->function_dispatcher()->AllocateThunk(&RestartAnswer, 0);
+    message = GuestCString(base, "$XerengeRestart");  // the text: LocalisedText below
+  }
+  if (!answer) {
+    return false;
+  }
+  const PPCContext saved = ctx;
+  // The two arguments past r10, in the caller's parameter area.
+  StoreU32(base, ctx.r1.u32 + 84, 0);
+  StoreU32(base, ctx.r1.u32 + 92, 0);
+  ctx.r3.u64 = LoadU32(base, kPopupService);
+  ctx.r4.u64 = kEmptyTitle;
+  ctx.r5.u64 = message;
+  ctx.r6.u64 = kPopupButtons;
+  ctx.r7.u64 = answer;
+  ctx.r8.u64 = 0;
+  ctx.r9.u64 = 12;
+  ctx.r10.u64 = 0;
+  REXLOG_INFO("menu: restart popup asked for");
+  sub_821E6928(ctx, base);
+  ctx = saved;
+  return true;
+}
+
+}  // namespace
+
 REX_HOOK_RAW(sub_821EC580) {
   const int32_t option = int32_t(ctx.r4.u32);
   if (option > kOurOptions && option <= kOurOptions + 3) {
     settings::SetPage(settings::Page(option - kOurOptions));
+    g_visited_pages = true;
     REXLOG_INFO("menu: Xerenge settings page {}", option - kOurOptions);
     ShowSettings(base);
     return;
@@ -202,8 +264,15 @@ REX_HOOK_RAW(sub_821EC580) {
       ShowSettings(base);
       return;
     }
-    if (settings::TakeRestartNeeded()) {
-      REXLOG_INFO("menu: settings changed that take effect after a restart");
+    // Leaving Settings: the restart popup, if our pages were opened and a
+    // change wants a start; its answer goes on from there.
+    const bool restart = settings::TakeRestartNeeded();
+    const bool visited = g_visited_pages;
+    g_visited_pages = false;
+    if (restart && visited && XerengeCanRestart()) {
+      // Not from here, inside the interface's code: asked for before it runs next (below).
+      g_popup_pending = true;
+      return;
     }
   }
   __imp__sub_821EC580(ctx, base);
@@ -229,4 +298,55 @@ REX_HOOK_RAW(sub_821FF408) {
     ctx.r3.u64 = 0x82036178;  // "../Burnout4/Menu/DriverDetails/DriverDetailsSettings"
   }
   __imp__sub_821FF408(ctx, base);
+}
+
+// The string table's lookup by key (sub_8210FCF8(table, key) -> UTF-16), which
+// a text "$Key" in the interface comes to without its $: the keys of ours,
+// with their text, big-endian UTF-16 in guest memory.
+extern "C" void __imp__sub_8210FCF8(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_8210FCF8) {
+  static const struct {
+    const char* key;
+    const char* text;
+  } kTexts[] = {
+      {"XerengeRestart", "Some settings take effect after a restart. Restart the game now?"},
+  };
+  static uint32_t guest[std::size(kTexts)] = {};
+  const char* key = reinterpret_cast<const char*>(xerenge::GuestPointer(base, ctx.r4.u32));
+  for (size_t i = 0; ctx.r4.u32 >= 0x10000 && i < std::size(kTexts); ++i) {
+    if (std::strcmp(key, kTexts[i].key) == 0) {
+      if (!guest[i]) {
+        const size_t length = std::strlen(kTexts[i].text);
+        guest[i] = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(length + 1) * 2, 0x10);
+        uint8_t* out = xerenge::GuestPointer(base, guest[i]);
+        for (size_t c = 0; c <= length; ++c) {
+          out[c * 2] = 0;
+          out[c * 2 + 1] = uint8_t(kTexts[i].text[c]);
+        }
+      }
+      ctx.r3.u64 = guest[i];
+      return;
+    }
+  }
+  __imp__sub_8210FCF8(ctx, base);
+}
+
+// The interface taking a popup's text and buttons.
+extern "C" void __imp__sub_821DF3A8(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_821DF3A8) {
+  REXLOG_INFO("menu: popup parameters taken");
+  __imp__sub_821DF3A8(ctx, base);
+  REXLOG_INFO("menu: popup parameters made");
+}
+
+// CB4AptManager::Render: each frame, before the interface's code runs. A popup
+// asked for from inside that code (a native, as SelectedOption is) runs the
+// interpreter again within itself and stops the game; from here it does not.
+extern "C" void __imp__sub_821FF308(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_821FF308) {
+  if (g_popup_pending) {
+    g_popup_pending = false;
+    ShowRestartPopup(ctx, base);
+  }
+  __imp__sub_821FF308(ctx, base);
 }

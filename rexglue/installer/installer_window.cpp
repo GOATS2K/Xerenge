@@ -59,15 +59,17 @@ constexpr const char* kXexSha256Us =
 
 constexpr const char* kDesktopId = "xerenge-burnout-revenge.desktop";
 
+// The launcher the shortcuts start (launcher.cpp), from the payload: it reads
+// xerenge.conf and starts the game. It replaces the script installs before
+// 0.4.8 had by another name, which is removed.
 #ifdef Q_OS_WIN
 constexpr const char* kExe = ".exe";
-constexpr const char* kLauncherName = "Burnout Revenge.cmd";
-// The launcher the shortcuts start (launcher_win.cpp), from the payload. The batch file is
-// still written, for shortcuts made to it before.
 constexpr const char* kLauncherExe = "Burnout Revenge.exe";
+constexpr const char* kOldLauncher = "Burnout Revenge.cmd";
 #else
 constexpr const char* kExe = "";
-constexpr const char* kLauncherName = "burnout-revenge";
+constexpr const char* kLauncherExe = "burnout_revenge";
+constexpr const char* kOldLauncher = "burnout-revenge";
 #endif
 
 // The environment for the programs the installer runs (extract-image): the
@@ -85,233 +87,6 @@ QProcessEnvironment ToolEnvironment() {
   }
   return env;
 }
-
-// Started from the shortcut. Reads the settings the installer wrote - so they
-// can be changed later by editing xerenge.conf - and starts the game the way
-// run.sh does.
-constexpr const char* kLauncher = R"SH(#!/bin/sh
-# Burnout Revenge (Xerenge). Written by the installer; the settings are in
-# xerenge.conf beside this file and are read at every start.
-dir=$(cd "$(dirname "$0")" && pwd)
-conf="$dir/xerenge.conf"
-value() {
-    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$conf" 2>/dev/null | tail -n 1
-}
-
-[ "$(value bloom)" = true ] || export XERENGE_NO_BLOOM=1
-[ "$(value motion_blur)" = true ] || export XERENGE_NO_MOTION_BLUR=1
-
-renderer=$(value renderer)
-if [ "$renderer" != xenos ]; then
-    renderer=plume
-    export XERENGE_D3D_TARGETS=1 XERENGE_D3D_UI=1 XERENGE_SKIP_LOGOS=1 \
-           XERENGE_REAL_SHADERS=1 XERENGE_D3D_DRAWS=1 XERENGE_SECONDARY_TICKS=1
-fi
-
-gamertag=$(value gamertag)
-[ -n "$gamertag" ] && gamertag_arg="--gamertag=$gamertag"
-
-# Online: a server address means that server and nothing local; otherwise this copy
-# runs a lobby of its own when local multiplayer is on; otherwise no online mode.
-server=$(value lobby_server)
-online_args=""
-if [ -n "$server" ]; then
-    online_args="--online --online_fake_lobby=false --lobby_server=$server"
-elif [ "$(value online)" = true ]; then
-    online_args="--online --online_fake_lobby=false"
-fi
-
-lang=$(value language)
-[ -n "$lang" ] && export XERENGE_LANGUAGE="$lang"
-[ "$(value async_present)" = true ] && export XERENGE_ASYNC_PRESENT=1
-[ "$(value early_submit)" = false ] && export XERENGE_ACQUIRE_FIRST=1
-[ "$(value packed_vertices)" = false ] && export XERENGE_FULL_VERTICES=1
-[ "$(value culling)" = true ] && export XERENGE_CULL=1
-[ "$(value reflection_split)" = true ] && export XERENGE_REFLECTION_SPLIT=1
-res=$(value render_resolution)
-[ -n "$res" ] && export XERENGE_RENDER_RESOLUTION="$res"
-aniso=$(value anisotropy)
-if [ "$aniso" = off ]; then export XERENGE_MAX_ANISOTROPY=1
-elif [ -n "$aniso" ]; then export XERENGE_MAX_ANISOTROPY="$aniso"; fi
-grade=$(value colour_grade)
-[ -n "$grade" ] && export XERENGE_COLOUR_GRADE="$grade"
-aa=$(value aa)
-[ -n "$aa" ] && export XERENGE_AA="$aa"
-sharpen=$(value sharpen)
-[ -n "$sharpen" ] && export XERENGE_SHARPEN="$sharpen"
-brightness=$(value brightness)
-[ -n "$brightness" ] && export XERENGE_BRIGHTNESS="$brightness"
-shadow_lift=$(value shadow_lift)
-[ -n "$shadow_lift" ] && export XERENGE_SHADOW_LIFT="$shadow_lift"
-power=$(value power_mode)
-[ -n "$power" ] && export XERENGE_POWER_MODE="$power"
-lead=$(value spin_lead_ms)
-[ -n "$lead" ] && export XERENGE_SPIN_LEAD_MS="$lead"
-[ "$(value fps_counter)" = true ] && export XERENGE_FPS_SHOW=1
-[ "$(value fps_30)" = true ] && export XERENGE_FPS_30=1
-[ "$(value frame_generation)" = true ] && export XERENGE_FRAME_GENERATION=120
-[ "$(value crash_interpolation)" = false ] && export XERENGE_CRASH_INTERPOLATION=0
-[ "$(value aspect_16_9)" = false ] || export XERENGE_ASPECT_16_9=1
-
-# Fullscreen unless windowed; the keyboard as a pad with its keybind_* lines.
-extra=--fullscreen
-[ "$(value windowed)" = true ] && extra=--no-fullscreen
-if [ "$(value keyboard)" = true ]; then
-    extra="$extra --mnk_mode=true"
-    for key in $(sed -n "s/^[[:space:]]*\(keybind_[a-z_]*\)[[:space:]]*=.*/\1/p" "$conf"); do
-        extra="$extra --$key=$(value "$key")"
-    done
-fi
-
-# Debug mode: the debug_* settings decide what is logged.
-level=info
-if [ "$(value debug)" = true ]; then
-    level=$(value debug_log_level)
-    [ -n "$level" ] || level=debug
-    export XERENGE_DEBUG=1
-    [ "$(value debug_gpu_trace)" = true ] && export XERENGE_GPU_TRACE=1
-    [ "$(value debug_movie_trace)" = true ] && export XERENGE_MOVIE_TRACE=1
-    [ "$(value debug_pipeline_log)" = true ] && export XERENGE_PIPELINE_LOG=1
-    [ "$(value debug_vertex_trace)" = false ] || export XERENGE_VERTEX_TRACE=1
-    [ "$(value debug_constant_trace)" != true ] || export XERENGE_CONSTANT_TRACE=1
-    video_gpu=$(value debug_video_gpu)
-    [ -n "$video_gpu" ] && export XERENGE_VIDEO_GPU="$video_gpu"
-    [ "$(value debug_noisy)" = true ] && extra="$extra --log_noisy=true"
-fi
-
-if [ "$(uname -s)" = Darwin ]; then
-    # The game finds its libraries, the Vulkan loader and MoltenVK beside it.
-    logs="$HOME/Library/Logs/xerenge-burnout"
-else
-    export SDL_VIDEODRIVER=x11
-    export LD_LIBRARY_PATH="$dir/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    logs="${XDG_STATE_HOME:-$HOME/.local/state}/xerenge-burnout"
-fi
-[ -n "$(value log_path)" ] && logs=$(value log_path)
-mkdir -p "$logs"
-
-# Started from a shortcut there is no terminal to show why a start failed
-# before the game's own log opened, so what it prints goes to a file.
-if [ ! -t 2 ]; then
-    exec >"$logs/launcher.log" 2>&1
-    echo "$(date) session=$XDG_SESSION_TYPE DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-    echo "args: $extra $*"
-fi
-
-cd "$dir"
-exec "$dir/bin/burnout" \
-    --game_data_root "$dir/game" \
-    --gpu_plugin "$renderer" \
-    --gpu_backend "$renderer" \
-    --no-vulkan_async_skip_incomplete_frames \
-    --log_level "$level" \
-    --log_file "$logs/burnout.log" \
-    --log_max_file_size_mb 32 \
-    --log_max_files 3 \
-    $extra $gamertag_arg $online_args \
-    "$@"
-)SH";
-
-// The same for Windows, as a batch file the shortcuts point at.
-constexpr const char* kWindowsLauncher = R"CMD(@echo off
-rem Burnout Revenge (Xerenge). Written by the installer; the settings are in
-rem xerenge.conf beside this file and are read at every start.
-setlocal
-set "dir=%~dp0"
-set "bloom=false"
-set "motion_blur=false"
-set "renderer=plume"
-if exist "%dir%xerenge.conf" (
-    for /f "usebackq eol=# tokens=1,2 delims== " %%a in ("%dir%xerenge.conf") do set "%%a=%%b"
-)
-
-if /i not "%bloom%"=="true" set "XERENGE_NO_BLOOM=1"
-if /i not "%motion_blur%"=="true" set "XERENGE_NO_MOTION_BLUR=1"
-
-if /i not "%renderer%"=="xenos" set "renderer=plume"
-if "%renderer%"=="plume" (
-    set "XERENGE_D3D_TARGETS=1"
-    set "XERENGE_D3D_UI=1"
-    set "XERENGE_SKIP_LOGOS=1"
-    set "XERENGE_REAL_SHADERS=1"
-    set "XERENGE_D3D_DRAWS=1"
-    set "XERENGE_SECONDARY_TICKS=1"
-)
-
-set "gamertag_arg="
-if defined gamertag set "gamertag_arg=--gamertag=%gamertag%"
-
-rem Online: a server address means that server and nothing local; otherwise this copy
-rem runs a lobby of its own when local multiplayer is on; otherwise no online mode.
-set "online_args="
-if /i "%online%"=="true" set "online_args=--online --online_fake_lobby=false"
-if defined lobby_server set "online_args=--online --online_fake_lobby=false --lobby_server=%lobby_server%"
-
-if defined language set "XERENGE_LANGUAGE=%language%"
-if /i "%async_present%"=="true" set "XERENGE_ASYNC_PRESENT=1"
-if /i "%early_submit%"=="false" set "XERENGE_ACQUIRE_FIRST=1"
-if /i "%packed_vertices%"=="false" set "XERENGE_FULL_VERTICES=1"
-if /i "%culling%"=="true" set "XERENGE_CULL=1"
-if /i "%reflection_split%"=="true" set "XERENGE_REFLECTION_SPLIT=1"
-if defined render_resolution set "XERENGE_RENDER_RESOLUTION=%render_resolution%"
-if /i "%anisotropy%"=="off" (set "XERENGE_MAX_ANISOTROPY=1") else if defined anisotropy set "XERENGE_MAX_ANISOTROPY=%anisotropy%"
-if defined colour_grade set "XERENGE_COLOUR_GRADE=%colour_grade%"
-if defined aa set "XERENGE_AA=%aa%"
-if defined sharpen set "XERENGE_SHARPEN=%sharpen%"
-if defined brightness set "XERENGE_BRIGHTNESS=%brightness%"
-if defined shadow_lift set "XERENGE_SHADOW_LIFT=%shadow_lift%"
-if defined power_mode set "XERENGE_POWER_MODE=%power_mode%"
-if defined spin_lead_ms set "XERENGE_SPIN_LEAD_MS=%spin_lead_ms%"
-if /i "%fps_counter%"=="true" set "XERENGE_FPS_SHOW=1"
-if /i "%fps_30%"=="true" set "XERENGE_FPS_30=1"
-if /i "%frame_generation%"=="true" set "XERENGE_FRAME_GENERATION=120"
-if /i "%crash_interpolation%"=="false" set "XERENGE_CRASH_INTERPOLATION=0"
-if /i not "%aspect_16_9%"=="false" set "XERENGE_ASPECT_16_9=1"
-
-rem Fullscreen unless windowed; the keyboard as a pad with its keybind_* lines.
-set "extra=--fullscreen"
-if /i "%windowed%"=="true" set "extra=--no-fullscreen"
-if /i not "%keyboard%"=="true" goto :keys_done
-set "extra=%extra% --mnk_mode=true"
-for /f "usebackq eol=# tokens=1,2 delims== " %%a in ("%dir%xerenge.conf") do (
-    echo %%a| findstr /b "keybind_" >nul && call set "extra=%%extra%% --%%a=%%b"
-)
-:keys_done
-
-rem Debug mode: the debug_* settings decide what is logged.
-set "level=info"
-if /i not "%debug%"=="true" goto :debug_done
-set "level=debug"
-if defined debug_log_level set "level=%debug_log_level%"
-set "XERENGE_DEBUG=1"
-if /i "%debug_gpu_trace%"=="true" set "XERENGE_GPU_TRACE=1"
-if /i "%debug_movie_trace%"=="true" set "XERENGE_MOVIE_TRACE=1"
-if /i "%debug_pipeline_log%"=="true" set "XERENGE_PIPELINE_LOG=1"
-if /i not "%debug_vertex_trace%"=="false" set "XERENGE_VERTEX_TRACE=1"
-if /i "%debug_constant_trace%"=="true" set "XERENGE_CONSTANT_TRACE=1"
-if defined debug_video_gpu set "XERENGE_VIDEO_GPU=%debug_video_gpu%"
-if /i "%debug_noisy%"=="true" set "extra=%extra% --log_noisy=true"
-:debug_done
-
-set "logs=%LOCALAPPDATA%\xerenge-burnout"
-if defined log_path set "logs=%log_path%"
-if not exist "%logs%" mkdir "%logs%"
-
-cd /d "%dir%"
-rem /wait: the launcher lives as long as the game, so Steam (a non-Steam
-rem shortcut to this file) keeps Steam Input on for it.
-start "" /wait "%dir%bin\burnout.exe" ^
-    --game_data_root "%dir%game" ^
-    --gpu_plugin %renderer% ^
-    --gpu_backend %renderer% ^
-    --no-vulkan_async_skip_incomplete_frames ^
-    --log_level %level% ^
-    --log_file "%logs%\burnout.log" ^
-    --log_max_file_size_mb 32 ^
-    --log_max_files 3 ^
-    %extra% %gamertag_arg% %online_args% ^
-    %*
-)CMD";
 
 // The pad controls the keyboard can stand in for: the game's keybind_* setting,
 // the label shown, and the key given to it by default.
@@ -1477,30 +1252,17 @@ QString InstallerWindow::WriteSettings() const {
   if (!WriteText(install.filePath("xerenge.conf"), settings, false)) {
     return tr("cannot write %1").arg(install.filePath("xerenge.conf"));
   }
-#ifdef Q_OS_WIN
-  const char* launcher = kWindowsLauncher;
-#else
-  const char* launcher = kLauncher;
-#endif
-  if (!WriteText(install.filePath(kLauncherName), QString::fromUtf8(launcher), true)) {
-    return tr("cannot write %1").arg(install.filePath(kLauncherName));
-  }
-#ifdef Q_OS_WIN
+  QFile::remove(install.filePath(kOldLauncher));
   if (const QString error = CopyFile(QDir(payload_dir_).filePath(kLauncherExe), install.filePath(kLauncherExe));
       !error.isEmpty()) {
     return error;
   }
-#endif
   return {};
 }
 
 QString InstallerWindow::CreateShortcuts() const {
   const QDir install(install_dir_);
-#ifdef Q_OS_WIN
   const QString launcher = install.filePath(kLauncherExe);
-#else
-  const QString launcher = install.filePath(kLauncherName);
-#endif
 #ifndef Q_OS_WIN
   // The game's icon is made here, from the logo in the game files just
   // installed (game_icon.h). Another release of the disc may not have it in

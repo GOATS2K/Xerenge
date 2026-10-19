@@ -331,6 +331,16 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
   // The A press handler: MenuScreenManager.SelectedOption(m.xid), m the button.
   const auto define_handler = [&] {
     const uint32_t body = code.BeginFunction(param_name);
+    // MenuSoundManager.PlaySound(SfxEnum.Select), as the Xbox Live options' EA TRAX does.
+    code.Push({c.String("SfxEnum")});
+    code.Op(0x1C);
+    code.Push({c.String("Select")});
+    code.Op(0x4E);
+    code.Push({c.Int(1), c.String("MenuSoundManager")});
+    code.Op(0x1C);
+    code.Push({c.String("PlaySound")});
+    code.Op(0x52);
+    code.Op(0x17);
     code.Push({c.String("m")});
     code.Op(0x1C);  // GetVariable
     code.Push({c.String("xid")});

@@ -202,9 +202,9 @@ void SetPage(Page page) { g_page = page; }
 
 std::string PageTitle(Page page) {
   switch (page) {
-    case kGraphics: return "GRAPHICS";
-    case kHacks: return "HACKS";
-    case kDebug: return "DEBUG";
+    case kGraphics: return "[GRAPHICS]";
+    case kHacks: return "[HACKS]";
+    case kDebug: return "[DEBUG]";
     default: return {};
   }
 }
