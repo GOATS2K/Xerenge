@@ -273,6 +273,7 @@ jobs:
           cp rexglue/build/burnout.exe "$payload/bin/burnout_eu.exe"
           find rexglue/build rexglue-sdk/out/win-amd64 -maxdepth 2 -name '*.dll' -not -path '*/Debug/*' -exec cp {} "$payload/bin/" \;
           cp tools/bin/extract-image.exe "$payload/tools/"
+          cp "rexglue/installer/build/Burnout Revenge.exe" "$payload/"
           cp rexglue/installer/build/xerenge-installer.exe "$package/"
           windeployqt --release --no-translations "$package/xerenge-installer.exe"
           ls -laR "$package"

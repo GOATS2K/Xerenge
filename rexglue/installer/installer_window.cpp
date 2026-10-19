@@ -62,6 +62,9 @@ constexpr const char* kDesktopId = "xerenge-burnout-revenge.desktop";
 #ifdef Q_OS_WIN
 constexpr const char* kExe = ".exe";
 constexpr const char* kLauncherName = "Burnout Revenge.cmd";
+// The launcher the shortcuts start (launcher_win.cpp), from the payload. The batch file is
+// still written, for shortcuts made to it before.
+constexpr const char* kLauncherExe = "Burnout Revenge.exe";
 #else
 constexpr const char* kExe = "";
 constexpr const char* kLauncherName = "burnout-revenge";
@@ -1482,12 +1485,22 @@ QString InstallerWindow::WriteSettings() const {
   if (!WriteText(install.filePath(kLauncherName), QString::fromUtf8(launcher), true)) {
     return tr("cannot write %1").arg(install.filePath(kLauncherName));
   }
+#ifdef Q_OS_WIN
+  if (const QString error = CopyFile(QDir(payload_dir_).filePath(kLauncherExe), install.filePath(kLauncherExe));
+      !error.isEmpty()) {
+    return error;
+  }
+#endif
   return {};
 }
 
 QString InstallerWindow::CreateShortcuts() const {
   const QDir install(install_dir_);
+#ifdef Q_OS_WIN
+  const QString launcher = install.filePath(kLauncherExe);
+#else
   const QString launcher = install.filePath(kLauncherName);
+#endif
 #ifndef Q_OS_WIN
   // The game's icon is made here, from the logo in the game files just
   // installed (game_icon.h). Another release of the disc may not have it in

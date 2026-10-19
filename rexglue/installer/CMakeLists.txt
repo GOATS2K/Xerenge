@@ -34,3 +34,11 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "xerenge.installer"
         MACOSX_BUNDLE_ICON_FILE xerenge)
 endif()
+
+# The Windows launcher (launcher_win.cpp): "Burnout Revenge.exe", which the
+# installer puts beside bin\ and the shortcuts point at. Plain Win32, no Qt.
+if(WIN32)
+    add_executable(burnout-launcher WIN32 launcher_win.cpp xerenge.rc)
+    set_target_properties(burnout-launcher PROPERTIES OUTPUT_NAME "Burnout Revenge")
+    target_link_libraries(burnout-launcher PRIVATE user32)
+endif()
