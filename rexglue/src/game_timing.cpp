@@ -29,6 +29,7 @@
 // advances sixty steps a second whatever the frame rate. At the ordinary
 // sixty frames a second the title's own settings are left alone.
 #include <algorithm>
+#include <cstring>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -62,6 +63,12 @@ struct FrameClock {
   // the timer for - 1, or 2 in Crash mode, which runs at thirty frames a
   // second with its logic still at sixty. The renderer paces swaps by it.
   uint32_t vblanks_per_frame = 1;
+  // Not the clock: the anti-aliasing chosen in the game's menu (xerenge_menu.cpp),
+  // 0 off, 1 FXAA, 2 SMAA, or -1 while the menu has not changed it. Rides on this
+  // pointer as the one way the plugin already reads the host on every platform.
+  int32_t menu_anti_aliasing = -1;
+  // Likewise the sharpening, 0 to 1, or negative while unchanged.
+  float menu_sharpening = -1.0f;
 };
 FrameClock g_clock;
 uint32_t g_clock_timer = 0;
@@ -277,8 +284,9 @@ extern "C" REX_HOST_EXPORT RexFrameClockProviderFn rex_frame_clock_provider = nu
 
 namespace {
 void CopyFrameClock(void* out, size_t size) {
-  if (out && size >= sizeof(FrameClock)) {
-    *static_cast<FrameClock*>(out) = g_clock;
+  // A reader may know only the fields before menu_anti_aliasing.
+  if (out) {
+    std::memcpy(out, &g_clock, std::min(size, sizeof(FrameClock)));
   }
 }
 const bool g_clock_registered = [] {
@@ -286,3 +294,12 @@ const bool g_clock_registered = [] {
   return true;
 }();
 }  // namespace
+
+// The menu's anti-aliasing for the renderer (see FrameClock::menu_anti_aliasing).
+void XerengeSetMenuAntiAliasing(int32_t mode) {
+  g_clock.menu_anti_aliasing = mode;
+}
+
+void XerengeSetMenuSharpening(float strength) {
+  g_clock.menu_sharpening = strength;
+}

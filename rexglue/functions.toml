@@ -82,3 +82,9 @@
 # its neighbour at 0x820FA1D0, which the analyser did find. Missing, the share
 # stopped the game on "Call to invalid or unregistered function".
 0x820FA1D8 = { size = 0x8 }
+
+# Apt's handler for one of its push-a-constant opcodes (it pushes the value at
+# 0x82D398F8 and tail-calls on, like its neighbour at 0x8243C468): the game's
+# movies never use it, the settings pages (settings_movie.cpp) did, and the
+# game stopped on "Call to invalid or unregistered function".
+0x8243C4A0 = { size = 0x38 }

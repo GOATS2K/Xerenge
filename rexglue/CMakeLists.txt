@@ -14,6 +14,10 @@ include(generated/rexglue.cmake)
 set(BURNOUT_SOURCES
     src/main.cpp
     src/movie_trace.cpp
+    src/menu_trace.cpp
+    src/xerenge_menu.cpp
+    src/settings_movie.cpp
+    src/xerenge_settings.cpp
     src/music_trace.cpp
     src/movie_frames.cpp
     src/tint_trace.cpp

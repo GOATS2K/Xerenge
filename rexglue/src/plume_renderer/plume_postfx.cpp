@@ -4,6 +4,8 @@
  */
 #include "plume_renderer/plume_postfx.h"
 
+#include "frame_clock_provider.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -99,6 +101,31 @@ void SetSharpening(float strength) {
 }
 
 PlumePostFx::Settings PlumePostFx::Settings::Current() {
+  // A choice made in the game's menu (Driver Details > Special Features), which
+  // the game publishes beside its frame clock (game_timing.cpp): taken when it changes.
+  if (const RexFrameClockProviderFn provider = RexFrameClockProvider()) {
+    struct {
+      uint64_t frame;
+      uint32_t steps_this_frame, epoch;
+      double state_steps, real_steps;
+      uint32_t valid, vblanks_per_frame;
+      int32_t menu_anti_aliasing;
+      float menu_sharpening;
+    } clock{};
+    clock.menu_anti_aliasing = -1;
+    clock.menu_sharpening = -1.0f;
+    provider(&clock, sizeof(clock));
+    static int32_t taken = -1;
+    if (clock.menu_anti_aliasing >= 0 && clock.menu_anti_aliasing != taken) {
+      taken = clock.menu_anti_aliasing;
+      SetAntiAliasing(AntiAliasing(uint32_t(taken)));
+    }
+    static float taken_sharpening = -1.0f;
+    if (clock.menu_sharpening >= 0.0f && clock.menu_sharpening != taken_sharpening) {
+      taken_sharpening = clock.menu_sharpening;
+      SetSharpening(taken_sharpening);
+    }
+  }
   Settings settings;
   settings.aa = GetAntiAliasing();
   settings.sharpen = GetSharpening();

@@ -12,6 +12,8 @@
 // when something changes: whether the press is seen, the action's pad
 // binding, and the update's fields.
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include <rex/hook.h>
@@ -100,6 +102,19 @@ REX_HOOK_RAW(sub_8210F940) {
 
 REX_HOOK_RAW(sub_822CB4F0) {
   const uint32_t music = ctx.r3.u32;
+  // XERENGE_DUMP_IMAGE=<file>: the title's loaded image (82000000-82DA0000) written once,
+  // for looking up its strings and data offline.
+  static bool dumped = false;
+  if (!dumped) {
+    dumped = true;
+    if (const char* path = std::getenv("XERENGE_DUMP_IMAGE")) {
+      if (FILE* file = std::fopen(path, "wb")) {
+        std::fwrite(xerenge::GuestPointer(base, 0x82000000), 1, 0xDA0000, file);
+        std::fclose(file);
+        REXLOG_INFO("music: image dumped to {}", path);
+      }
+    }
+  }
   __imp__sub_822CB4F0(ctx, base);
   struct Fields {
     uint32_t mode, next_song, skipping;
@@ -118,4 +133,65 @@ REX_HOOK_RAW(sub_822CB4F0) {
                 music, now.mode, now.next_song, now.skipping, now.playing, now.blocked);
   }
   last = now;
+  // What sub_822ADEE8 (called from this update) waits for before resuming the
+  // soundtrack after a movie: this word at 4.
+  static uint32_t last_gate = ~0u;
+  const uint32_t gate = LoadU32(base, 0x82A538C0 + 22348);
+  if (gate != last_gate && Room()) {
+    REXLOG_INFO("music: resume gate {:08X} now {} (resumes at 4)", 0x82A538C0 + 22348, gate);
+  }
+  last_gate = gate;
+}
+
+// EA Trax going quiet after a movie (GitHub #29): the soundtrack is paused for
+// a movie (sub_822ADD90) and resumed after it (sub_822ADE70), both on the
+// music object, by its state at +776 (1 the title's playlist, 2 the player's
+// own music, 3 resumed). Logged with who asked, to find the path a skipped
+// movie takes without resuming.
+extern "C" void __imp__sub_822ADD90(PPCContext& __restrict, uint8_t*);
+extern "C" void __imp__sub_822ADE70(PPCContext& __restrict, uint8_t*);
+
+REX_HOOK_RAW(sub_822ADD90) {
+  const uint32_t music = ctx.r3.u32;
+  const uint32_t caller = ctx.lr;
+  const uint32_t state = LoadU32(base, music + 776);
+  __imp__sub_822ADD90(ctx, base);
+  REXLOG_INFO("music: paused for a movie by {:08X}: state {} -> {}, +764 {}, +25 {}", caller, state,
+              LoadU32(base, music + 776), LoadU8(base, music + 764), LoadU8(base, music + 25));
+}
+
+REX_HOOK_RAW(sub_822ADE70) {
+  const uint32_t music = ctx.r3.u32;
+  const uint32_t caller = ctx.lr;
+  const uint32_t state = LoadU32(base, music + 776);
+  __imp__sub_822ADE70(ctx, base);
+  REXLOG_INFO("music: resumed after a movie by {:08X}: state {} -> {}, +764 {}, +25 {}", caller, state,
+              LoadU32(base, music + 776), LoadU8(base, music + 764), LoadU8(base, music + 25));
+}
+
+// The other callers of XMP's pause (0x8259B7A8) and resume (0x8259B758): the
+// soundtrack came back after a skipped movie through none of the two above.
+extern "C" void __imp__sub_822AE9B8(PPCContext& __restrict, uint8_t*);
+extern "C" void __imp__sub_822AE9F0(PPCContext& __restrict, uint8_t*);
+extern "C" void __imp__sub_822CB488(PPCContext& __restrict, uint8_t*);
+
+REX_HOOK_RAW(sub_822AE9B8) {
+  REXLOG_INFO("music: sub_822AE9B8 (pauses) called by {:08X}", uint32_t(ctx.lr));
+  __imp__sub_822AE9B8(ctx, base);
+}
+
+REX_HOOK_RAW(sub_822AE9F0) {
+  REXLOG_INFO("music: sub_822AE9F0 (resumes) called by {:08X}", uint32_t(ctx.lr));
+  __imp__sub_822AE9F0(ctx, base);
+}
+
+REX_HOOK_RAW(sub_822CB488) {
+  static uint32_t last_caller = 0;
+  static uint32_t calls = 0;
+  ++calls;
+  if (ctx.lr != last_caller || calls % 600 == 1) {
+    REXLOG_INFO("music: sub_822CB488 (resumes) called by {:08X} ({} call(s))", uint32_t(ctx.lr), calls);
+  }
+  last_caller = ctx.lr;
+  __imp__sub_822CB488(ctx, base);
 }

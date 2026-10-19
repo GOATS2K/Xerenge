@@ -18,6 +18,7 @@
 // holds (e.g. DriverDetailsSettings).
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -418,7 +419,9 @@ int main(int argc, char** argv) {
       }
       movie.entries.push_back(std::move(k));
     }
-    bool match = filter.empty();
+    // A filter of 0x... picks the movie by where its data lies in the package.
+    bool match = filter.empty() ||
+                 (filter.rfind("0x", 0) == 0 && std::strtoull(filter.c_str(), nullptr, 16) == at);
     for (const auto& k : movie.entries) {
       match = match || k.text == filter;
     }
