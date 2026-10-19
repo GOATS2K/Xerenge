@@ -48,9 +48,8 @@ The installer builds from source too, so it needs the same packages; it runs the
 check first and says what is missing.
 
 **On a Mac.** Apple silicon tried on one machine: an M5 with macOS 26.7 and the
-Command Line Tools, without a full Xcode. Intel is not tried on real hardware,
-only built in CI (see below); `check-prerequisites.sh` and the build itself
-should work the same way. The SDK builds its own Vulkan loader and MoltenVK and
+Command Line Tools, without a full Xcode. Intel Macs are not supported: their
+build never worked, and CI no longer makes one. The SDK builds its own Vulkan loader and MoltenVK and
 puts them next to the game, so Homebrew only has to supply the build tools:
 
 ```

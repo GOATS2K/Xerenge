@@ -41,8 +41,8 @@ installer made without them says so and installs the European disc only.
 cd rexglue && ./run.sh
 ```
 
-The same works on a Mac, Apple silicon or Intel, and there is an installer app
-for it too; SETUP.md has what both need.
+The same works on a Mac with Apple silicon, and there is an installer app for
+it too; SETUP.md has what it needs. Intel Macs are not supported.
 
 That verifies the image, extracts it, builds the SDK and builds the title.
 [`SETUP.md`](SETUP.md) covers the steps separately, what each one does, and what
