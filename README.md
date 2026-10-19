@@ -168,3 +168,15 @@ Open:
 Game images, decrypted data, extracted assets, build directories and generated
 recompiler output are deliberately excluded, here and in the forks. The ReXGlue
 SDK is a separate checkout rather than vendored.
+
+## Reporting a problem
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first: a report needs the log, the
+version, the hardware and the steps to reproduce it.
+
+## Licence
+
+Xerenge's own code is under the GNU General Public License, version 3 or later
+([LICENSE](LICENSE)). The ReXGlue SDK and the third-party code under
+`rexglue/thirdparty` keep their own licences. Burnout Revenge itself is not
+covered: it is EA's and Criterion's, and you need your own disc to play.

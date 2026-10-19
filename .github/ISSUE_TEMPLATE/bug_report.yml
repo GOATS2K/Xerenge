@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work or looks wrong. Read CONTRIBUTING.md first.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A report without the log, the version and the hardware has to wait for questions first and is looked at many times later. See [CONTRIBUTING.md](https://github.com/shipa-2/Xerenge/blob/main/CONTRIBUTING.md).
+  - type: input
+    id: version
+    attributes:
+      label: Xerenge version and disc
+      placeholder: "0.4.7, European disc"
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System and hardware
+      description: OS and version, CPU, GPU and driver version. Android - phone model, chip, Android version, Turnip or not.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What happened, and how to make it happen again
+      description: What you did, what you expected, what happened instead; where in the game; every time or sometimes.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log and settings
+      description: |
+        Attach burnout.log from a run with the problem (Windows - %LOCALAPPDATA%\xerenge-burnout, Linux - ~/.local/state/xerenge-burnout, macOS - ~/Library/Logs/xerenge-burnout, Android - the installer's Log folder) and xerenge.conf from the install folder. Drag the files here.
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or video
+      description: For anything visual.
