@@ -26,6 +26,9 @@ Page CurrentPage();
 void SetPage(Page page);
 std::string PageTitle(Page page);
 
+// The American release has one language: no Language row there.
+void SetSingleLanguage(bool single);
+
 // The rows of a page, with their current values read from xerenge.conf.
 std::vector<Row> Rows(Page page);
 

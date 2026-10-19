@@ -193,12 +193,14 @@ const Setting* Find(int id) {
 }
 
 Page g_page = kMain;
+bool g_single_language = false;
 bool g_restart = false;
 
 }  // namespace
 
 Page CurrentPage() { return g_page; }
 void SetPage(Page page) { g_page = page; }
+void SetSingleLanguage(bool single) { g_single_language = single; }
 
 std::string PageTitle(Page page) {
   switch (page) {
@@ -212,7 +214,7 @@ std::string PageTitle(Page page) {
 std::vector<Row> Rows(Page page) {
   std::vector<Row> rows;
   for (const Setting& s : Settings()) {
-    if (s.page != page) {
+    if (s.page != page || (g_single_language && s.key && std::string(s.key) == "language")) {
       continue;
     }
     Row row{s.label, {}, s.id};

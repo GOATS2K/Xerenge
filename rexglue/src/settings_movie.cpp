@@ -631,6 +631,9 @@ REX_HOOK_RAW(sub_824277A0) {
     if (IsSettingsMovie(raw_data, data_size)) {
       const uint8_t* raw_constants = xerenge::GuestPointer(base, constants);
       Blob new_data, new_constants;
+      // The American release (a byte of its image that differs from the European
+      // one's: 0 there, 1 here) has one language.
+      xerenge::settings::SetSingleLanguage(*xerenge::GuestPointer(base, 0x825F7632) == 0);
       if (Rebuild(raw_data, data_size, raw_constants, ConstantsSize(raw_constants), new_data, new_constants)) {
         // Kept for as long as the movie may run: a screen's worth, not freed.
         ctx.r4.u64 = ToGuest(base, new_data);
