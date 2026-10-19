@@ -27,7 +27,7 @@ the title, translates the shaders, and creates a desktop shortcut and an
 applications menu entry. Nothing from the game is downloaded - it is all made
 from your disc, on your machine. The settings land in `xerenge.conf` in the
 install directory and are read at every start, so they can be changed there
-later. To build the AppImage yourself: `rexglue/installer/make-appimage.sh`
+later - or in the game, under Driver Details > Settings (GRAPHICS, HACKS, DEBUG). To build the AppImage yourself: `rexglue/installer/make-appimage.sh`
 (needs Qt 6, linuxdeploy and linuxdeploy-plugin-qt). The payload carries the
 game twice, `bin/burnout_eu` and `bin/burnout_us`, and the installer installs
 the one for your disc as `bin/burnout`. CI builds the American one when its

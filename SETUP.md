@@ -89,7 +89,8 @@ Then it clones this repository into `<install>/source`, and runs the same
 scripts as below: the prerequisite check, the image check and extraction, the
 SDK, plume and XenosRecomp, and the build with its shader translation. It
 copies the game and the libraries it loads into `<install>/bin`, writes
-`xerenge.conf` and the launcher `burnout-revenge`, and adds a desktop shortcut
+`xerenge.conf` and the launcher (`burnout_revenge`, `Burnout Revenge.exe` on
+Windows: installer/launcher.cpp), and adds a desktop shortcut
 and an applications menu entry. Running it again over the same directory pulls
 the latest sources and rebuilds.
 

@@ -685,13 +685,11 @@ jobs:
 
           **Online play works out of the box** - the installer points at the server (`94639.snk.wtf`), where everyone plays together; there is nothing to set up. An install from before the server is moved to it when the installer runs over it.
 
-          **What's new in 0.4.7:**
-          - **The American release is supported** (GitHub #21, thanks to its author): the installer takes either disc image. Ultrawide and the logo skip work on both.
-          - **Online with three players and more** (GitHub #19): the third player no longer drops everyone or hangs on "Returning from game"; a host leaving closes the game for all.
-          - **Burnout Clips online**: clips are shared to the server, and the Top 20 and the recent players' clips show them. Clip thumbnails are still black.
-          - **Mali and other phones without BC textures** (GitHub #20, #22): re-encoded ETC2 textures are cached on disk, and "Textures as ETC2" in the installer prepares all of them ahead - no more stutter while textures are re-encoded in a race.
-          - Vertex cache fixes and draws finished on the worker thread (GitHub #15, #16, thanks to xenophobentx).
-          - plume is the default renderer; music plays in Replay after a race.
+          **What's new in 0.4.8:**
+          - **Settings in the game**: Driver Details > Settings has GRAPHICS, HACKS and DEBUG pages next to the sound rows - the installer's options as the game's own rows, kept in `xerenge.conf`. Anti-aliasing and sharpening change at once; for the rest, leaving Settings offers to restart the game (A restarts it, B keeps playing). The European release also gets a Language row there.
+          - **A real launcher instead of scripts**: `Burnout Revenge.exe` on Windows, `burnout_revenge` on Linux and macOS, beside the installed game - it reads `xerenge.conf` and starts the game. **Steam users:** the old `Burnout Revenge.cmd` / `burnout-revenge` are gone; add the new launcher to Steam as a non-Steam game instead (GitHub #26).
+          - **Xbox Live and Burnout Clips connect in seconds** again, not after 2 minutes (GitHub #24).
+          - **EA Trax no longer goes silent** after skipping a challenge-complete, rank-up or signature takedown video (GitHub #29).
 
           EOF
           gh release create "v$VERSION" --title "$VERSION" --latest --target "$GITHUB_SHA" \
