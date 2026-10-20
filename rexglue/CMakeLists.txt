@@ -277,7 +277,7 @@ target_include_directories(burnout PRIVATE "${REXSDK_DIR}/thirdparty/imgui")
 # can run one itself for players on a LAN, and a standalone binary for a
 # server of your own.
 find_package(Threads REQUIRED)
-add_library(ealobby-core STATIC src/ealobby/aries.cpp src/ealobby/locker.cpp src/ealobby/server.cpp)
+add_library(ealobby-core STATIC src/ealobby/aries.cpp src/ealobby/locker.cpp src/ealobby/news.cpp src/ealobby/server.cpp)
 target_include_directories(ealobby-core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_features(ealobby-core PUBLIC cxx_std_17)
 set_target_properties(ealobby-core PROPERTIES POSITION_INDEPENDENT_CODE ON)

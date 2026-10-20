@@ -22,6 +22,7 @@
 
 #include "ealobby/aries.h"
 #include "ealobby/locker.h"
+#include "ealobby/news.h"
 
 namespace ealobby {
 
@@ -45,6 +46,9 @@ struct Options {
   // live on a self-hosted server only.
   uint16_t locker_port = 0;
   std::string locker_dir = "locker";
+  // The news (news.h): the latest release of this GitHub repository, served
+  // beside the Locker. Empty: none.
+  std::string news_repo;
 };
 
 class Server {
@@ -129,6 +133,7 @@ class Server {
   SocketHandle lobby_listener_ = -1;
   SocketHandle locker_listener_ = -1;
   std::unique_ptr<Locker> locker_;
+  std::unique_ptr<News> news_;
   // Login keys (LKEY) handed out, and the persona each went to: the Locker's
   // requests carry the key.
   std::map<std::string, std::string> lkeys_;

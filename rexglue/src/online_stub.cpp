@@ -14,6 +14,7 @@
 //   4 gamertag selection (sign-in)    10 fetching configuration, then
 //   11 done, or failed                   CB4PostLoginManager
 // Every change of state is logged, so a run shows where the login stops.
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -328,11 +329,30 @@ REX_HOOK_RAW(sub_8211F448) {
   __imp__sub_8211F448(ctx, base);
 }
 
+// CGtLobbyDirtySock::GetNewsUrl(lobby, buffer, size): the news' address, made
+// from the login reply's NEWS_URL. With a server, its news beside its Locker:
+// the address is the client's own (LockerHost), as the server may not know
+// the one players reach it at.
+extern "C" void __imp__sub_8236D428(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_821F04B8(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_8236D428) {
+  const std::string host = LockerHost();
+  if (Online() && !host.empty() && ctx.r4.u32 && ctx.r5.u32 > 1) {
+    const std::string url = "http://" + host + "/news";
+    const size_t length = std::min<size_t>(url.size(), ctx.r5.u32 - 1);
+    std::memcpy(xerenge::GuestPointer(base, ctx.r4.u32), url.data(), length);
+    *xerenge::GuestPointer(base, ctx.r4.u32 + uint32_t(length)) = 0;
+    return;
+  }
+  __imp__sub_8236D428(ctx, base);
+}
+
 // CB4NetworkingService::PrepareDownloadNews - the lobby menus fetch EA's news
 // ticker over HTTPS from a URL the lobby server handed out at login
 // (CGtLobbyDirtySock::GetNewsUrl, which reads the server's login reply and
-// faults without one). There is no news: nothing is fetched, and
-// UpdateNewsTos stays idle.
+// faults without one). Never with DirtySock's HTTP here (it wrote through a
+// null pointer as the answer came): a server's news come in through
+// UpdateNewsTos below; a copy's own lobby has none.
 REX_HOOK_RAW(sub_821E9638) {
   if (Online()) {
     static bool logged = false;
@@ -1420,4 +1440,61 @@ REX_HOOK_RAW(sub_822302E8) {
       REXLOG_INFO("--online: PostNetworkRace update: state {} -> {}, returned {}", before, after, ret);
     }
   }
+}
+
+// CB4NetworkingService::UpdateNewsTos(service), each frame of the online
+// menus: +833 set when the News screen wants the news, +824 the download's
+// state. With a server, its news (ealobby/news.h, the latest Xerenge release's
+// notes) are fetched here at once, and what the game does with a finished
+// download done as it does it: the text as UTF-16 into its buffer (+820),
+// that as the custom string NewsText, the flags cleared, and the screen told
+// (_level0.gMainScreen.RefreshText()). Returns 2, done.
+extern "C" void __imp__sub_821F0690(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_821F04B8(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_821F5FA8(PPCContext& __restrict, uint8_t*);
+extern "C" void sub_82427C40(PPCContext& __restrict, uint8_t*);
+REX_HOOK_RAW(sub_821F0690) {
+  const uint32_t service = ctx.r3.u32;
+  const std::string host = LockerHost();
+  if (!Online() || host.empty() || xerenge::LoadGuestU32(base, service + 824) != 0 ||
+      *xerenge::GuestPointer(base, service + 833) == 0) {
+    __imp__sub_821F0690(ctx, base);
+    return;
+  }
+  std::string news = xerenge::online::HttpGet(host, "/news");
+  if (news.empty()) {
+    news = "The news could not be fetched from the server.";
+  }
+  REXLOG_INFO("--online: news from http://{}/news ({} bytes)", host, news.size());
+  const PPCContext saved = ctx;
+  if (xerenge::LoadGuestU32(base, service + 820) == 0) {
+    ctx.r3.u64 = service;
+    sub_821F04B8(ctx, base);
+  }
+  const uint32_t buffer = xerenge::LoadGuestU32(base, service + 820);
+  if (buffer) {
+    // The buffer holds 0x2A800 bytes: UTF-16, big-endian, from ASCII/UTF-8 bytes.
+    const size_t length = std::min<size_t>(news.size(), 0x2A800 / 2 - 1);
+    uint8_t* out = xerenge::GuestPointer(base, buffer);
+    for (size_t i = 0; i < length; ++i) {
+      out[i * 2] = 0;
+      out[i * 2 + 1] = uint8_t(news[i]) < 0x80 ? uint8_t(news[i]) : uint8_t('?');
+    }
+    out[length * 2] = out[length * 2 + 1] = 0;
+    ctx.r3.u64 = 0x82A538C0;  // CB4AptManager
+    ctx.r4.u64 = 0x82032D50;  // "NewsText"
+    ctx.r5.u64 = buffer;
+    sub_821F5FA8(ctx, base);
+  }
+  *xerenge::GuestPointer(base, service + 833) = 0;
+  *xerenge::GuestPointer(base, service + 834) = 0;
+  xerenge::StoreGuestU32(base, service + 824, 0);
+  ctx.r3.u64 = 0x82033FA4;  // "RefreshText"
+  ctx.r4.u64 = ctx.r1.u64 - 0x200;  // the call's result, unread
+  ctx.r5.u64 = 0x82033FB0;  // "_level0.gMainScreen"
+  ctx.r6.u64 = 0;
+  ctx.r7.u64 = 0;
+  sub_82427C40(ctx, base);
+  ctx = saved;
+  ctx.r3.u64 = 2;
 }

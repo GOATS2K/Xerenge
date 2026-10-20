@@ -297,6 +297,9 @@ bool Server::Start() {
             return it != lkeys_.end() ? it->second : std::string();
           },
           [this](const std::string& line) { Log(line); });
+      if (!options_.news_repo.empty()) {
+        news_ = std::make_unique<News>(options_.news_repo, [this](const std::string& line) { Log(line); });
+      }
       Log("ealobby: Locker (Burnout Clips) on port " + std::to_string(options_.locker_port) +
           ", files in " + options_.locker_dir);
     }
@@ -478,7 +481,8 @@ void Server::Receive(Connection& connection) {
       connection.close_when_sent = true;
       const std::vector<uint8_t> request = std::move(connection.in);
       connection.in.clear();
-      Send(connection, locker_->Handle(request));
+      // The news (news.h) on the same port, else the Locker.
+      Send(connection, news_ && News::Wanted(request) ? news_->Response() : locker_->Handle(request));
     }
     return;
   }

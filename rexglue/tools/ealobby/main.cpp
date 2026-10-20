@@ -28,6 +28,7 @@ void OnSignal(int) {
 int main(int argc, char** argv) {
   ealobby::Options options;
   options.locker_port = 31862;
+  options.news_repo = "shipa-2/Xerenge";
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     auto value = [&]() -> std::string {
@@ -49,10 +50,12 @@ int main(int argc, char** argv) {
       options.locker_port = uint16_t(std::stoi(value()));
     } else if (arg == "--locker-dir") {
       options.locker_dir = value();
+    } else if (arg == "--news-repo") {
+      options.news_repo = value();  // owner/name on GitHub; "" for no news
     } else {
       std::fprintf(stderr,
                    "usage: ealobby [--host A] [--directory-port P] [--lobby-port P] "
-                   "[--advertise A] [--locker-port P] [--locker-dir D]\n");
+                   "[--advertise A] [--locker-port P] [--locker-dir D] [--news-repo OWNER/NAME]\n");
       return arg == "--help" || arg == "-h" ? 0 : 2;
     }
   }

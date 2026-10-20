@@ -184,4 +184,60 @@ std::string LobbyServerAddress() {
   return address;
 }
 
+
+std::string HttpGet(const std::string& host_port, const std::string& path) {
+#ifdef _WIN32
+  WSADATA wsa;
+  WSAStartup(MAKEWORD(2, 2), &wsa);
+  using Socket = SOCKET;
+  const Socket kInvalid = INVALID_SOCKET;
+  const auto close_socket = [](Socket s) { closesocket(s); };
+#else
+  using Socket = int;
+  const Socket kInvalid = -1;
+  const auto close_socket = [](Socket s) { close(s); };
+#endif
+  const size_t colon = host_port.find(':');
+  const std::string host = host_port.substr(0, colon);
+  const int port = colon == std::string::npos ? 80 : std::atoi(host_port.c_str() + colon + 1);
+  const uint32_t address = Resolve(host);
+  if (!address) {
+    return {};
+  }
+  const Socket s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (s == kInvalid) {
+    return {};
+  }
+  // A few seconds at most: the caller is the game's own thread.
+#ifdef _WIN32
+  DWORD timeout = 3000;
+#else
+  timeval timeout{3, 0};
+#endif
+  setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  sockaddr_in to{};
+  to.sin_family = AF_INET;
+  to.sin_port = htons(uint16_t(port));
+  to.sin_addr.s_addr = address;
+  std::string response;
+  if (connect(s, reinterpret_cast<const sockaddr*>(&to), sizeof(to)) == 0) {
+    const std::string request = "GET " + path + " HTTP/1.1\r\nHost: " + host_port + "\r\nConnection: close\r\n\r\n";
+    send(s, request.data(), int(request.size()), 0);
+    char buffer[4096];
+    for (;;) {
+      const auto got = recv(s, buffer, sizeof(buffer), 0);
+      if (got <= 0) {
+        break;
+      }
+      response.append(buffer, size_t(got));
+    }
+  }
+  close_socket(s);
+  const size_t body = response.find("\r\n\r\n");
+  if (response.compare(0, 12, "HTTP/1.1 200") != 0 || body == std::string::npos) {
+    return {};
+  }
+  return response.substr(body + 4);
+}
 }  // namespace xerenge::online
