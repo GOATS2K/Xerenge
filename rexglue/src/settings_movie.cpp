@@ -187,15 +187,16 @@ class Code {
     Op(0xB9);
     Op(reg);
   }
-  // DefineFunction2 with one parameter, by name, and the header the game's own
+  // DefineFunction2 with parameters by name, and the header the game's own
   // handlers have (two registers, _global in r1). Returns where the body size goes.
-  uint32_t BeginFunction(uint32_t param_name) {
+  uint32_t BeginFunction(uint32_t param_name) { return BeginFunction(std::vector<uint32_t>{param_name}); }
+  uint32_t BeginFunction(std::vector<uint32_t> param_names) {
     Aligned(0x8E);
     b_.Put32(empty_name_);
-    b_.Put32(1);
+    b_.Put32(uint32_t(param_names.size()));
     b_.Put32(0x0002012A);
-    params_.push_back(b_.Here());
-    b_.Put32(param_name);  // fixed up to the parameter list in Finish
+    params_.push_back({b_.Here(), std::move(param_names)});
+    b_.Put32(0);  // the parameter list, placed in Finish
     const uint32_t size_at = b_.Here();
     b_.Put32(0);
     b_.Put32(0x98765432);
@@ -206,6 +207,11 @@ class Code {
 
   void SetEmptyName(uint32_t at) { empty_name_ = at; }
 
+  // A branch whose target comes later: Land() at the target.
+  uint32_t BranchIfTrue() { return BranchOp(0x9D); }
+  uint32_t BranchAlways() { return BranchOp(0x99); }
+  void Land(uint32_t at) { b_.Set32(at, b_.Here() - (at + 4)); }
+
   void Finish() {
     for (auto& list : lists_) {
       b_.Align(4);
@@ -215,12 +221,13 @@ class Code {
       }
       b_.Set32(list.first, at);
     }
-    for (uint32_t at : params_) {
-      const uint32_t name = b_.U32(at);
+    for (const auto& [at, param_names] : params_) {
       b_.Align(4);
       const uint32_t list = b_.Here();
-      b_.Put32(0);  // not in a register
-      b_.Put32(name);
+      for (uint32_t name : param_names) {
+        b_.Put32(0);  // not in a register
+        b_.Put32(name);
+      }
       b_.Set32(at, list);
     }
     lists_.clear();
@@ -228,9 +235,16 @@ class Code {
   }
 
  private:
+  uint32_t BranchOp(uint8_t op) {
+    Aligned(op);
+    const uint32_t at = b_.Here();
+    b_.Put32(0);
+    return at;
+  }
+
   Blob& b_;
   std::vector<std::pair<uint32_t, std::vector<uint32_t>>> lists_;
-  std::vector<uint32_t> params_;
+  std::vector<std::pair<uint32_t, std::vector<uint32_t>>> params_;
   uint32_t empty_name_ = 0;
 };
 
@@ -255,6 +269,14 @@ constexpr float kMainFirstY = 267.0f;
 constexpr float kMainStep = 40.0f;
 constexpr float kPageFirstY = 148.0f;
 constexpr float kPageStep = 34.0f;
+// The pause menu: its volume rows are 42 apart at x -80, its own items centred
+// on 240 at x 217.8. Our options: the two volumes and GRAPHICS around 240; the
+// GRAPHICS page's four rows likewise.
+constexpr float kPauseChoiceX = -80.0f;
+constexpr float kPauseButtonX = 217.8f;
+constexpr float kPauseMainY[] = {256.0f, 298.0f, 340.0f};  // the volumes where the game has them
+constexpr float kPausePageFirstY = 177.0f;
+constexpr float kPauseStep = 42.0f;
 // The game's rows, left out of our pages.
 constexpr const char* kGameRows[] = {"takedown_btn", "effectsvol_btn", "musicvol_btn", "speaker_btn"};
 
@@ -264,14 +286,13 @@ uint32_t FloatBits(float value) {
   return bits;
 }
 
-bool IsSettingsMovie(const uint8_t* data, size_t size) {
-  static const char kName[] = "__Packages.DriverDetailsSettingsClass";
-  return std::search(data, data + size, kName, kName + sizeof(kName) - 1) != data + size;
+bool Holds(const uint8_t* data, size_t size, const char* text) {
+  return std::search(data, data + size, text, text + std::strlen(text)) != data + size;
 }
 
 // The rebuilt blobs, or false to leave the movie as it is.
 bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, size_t constants_size,
-             Blob& out_data, Blob& out_constants) {
+             bool pause, Blob& out_data, Blob& out_constants) {
   Constants c;
   if (!c.Read(constants, constants_size)) {
     REXLOG_WARN("menu: settings movie: its constants do not read");
@@ -286,25 +307,42 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
   }
   b.Align(16);
 
-  // The import: a new character.
+  // The imports: new characters after the movie's own.
+  //   Settings: the button its pages open from (the Xbox Live options' EA TRAX).
+  //   The pause menu: its own buttons' component, for GRAPHICS, and the choice
+  //   row of the race's menus (InGameMenuChoice2: MenuChoice's fields; MenuChoice
+  //   itself is in the front end's package only), named as the race's packages
+  //   name their components.
   const uint32_t imports = b.U32(root + 40), import_list = b.U32(root + 44);
   const uint32_t characters = b.U32(root + 20), character_list = b.U32(root + 24);
-  const uint32_t button_character = characters;
-  const uint32_t movie_name = b.PutString("b4Components/B4LongMenuOption");
-  const uint32_t export_name = b.PutString("B4LongMenuOption");
+  std::vector<std::pair<const char*, const char*>> added;
+  if (pause) {
+    added = {{"b4Components/B4GameMenuOption", "GameMenuOption"}, {"b4InGameMenuChoice2", "InGameMenuChoice2"}};
+  } else {
+    added = {{"b4Components/B4LongMenuOption", "B4LongMenuOption"}};
+  }
+  const uint32_t button_character = characters;  // the first import
+  std::vector<std::pair<uint32_t, uint32_t>> names;
+  for (const auto& [movie, name] : added) {
+    names.emplace_back(b.PutString(movie), b.PutString(name));
+  }
   b.Align(4);
   const uint32_t new_imports = b.Here();
   b.bytes.insert(b.bytes.end(), data + import_list, data + import_list + imports * 16);
-  b.Put32(movie_name);
-  b.Put32(export_name);
-  b.Put32(button_character);
-  b.Put32(0);
-  b.Set32(root + 40, imports + 1);
+  for (size_t i = 0; i < names.size(); ++i) {
+    b.Put32(names[i].first);
+    b.Put32(names[i].second);
+    b.Put32(characters + uint32_t(i));
+    b.Put32(0);
+  }
+  b.Set32(root + 40, imports + uint32_t(names.size()));
   b.Set32(root + 44, new_imports);
   const uint32_t new_characters = b.Here();
   b.bytes.insert(b.bytes.end(), data + character_list, data + character_list + characters * 4);
-  b.Put32(0);
-  b.Set32(root + 20, characters + 1);
+  for (size_t i = 0; i < names.size(); ++i) {
+    b.Put32(0);
+  }
+  b.Set32(root + 20, characters + uint32_t(names.size()));
   b.Set32(root + 24, new_characters);
 
   // The root's first frame: its items, and the template the buttons copy - the
@@ -314,7 +352,8 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
   uint32_t speaker = 0;
   for (uint32_t i = 0; i < item_count; ++i) {
     const uint32_t item = b.U32(item_list + i * 4);
-    if (b.U32(item) == 3 && (b.U32(item + 4) & 0x20) && b.Str(b.U32(item + 52)) == "speaker_btn") {
+    if (b.U32(item) == 3 && (b.U32(item + 4) & 0x20) &&
+        b.Str(b.U32(item + 52)) == (pause ? "btn_volume_effects" : "speaker_btn")) {
       speaker = item;
     }
   }
@@ -368,16 +407,16 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
       code.Op(0x4F);  // SetMember
     }
   };
-  const auto common = [&](int tab, bool first) {
-    set("m_bEnabled", c.Bool(true));
+  const auto common = [&](int tab, bool first, bool shown = true) {
+    set("m_bEnabled", c.Bool(shown));
     set("m_refFM", c.String("_root.gFM"));
     set("m_initiallySelected", c.Bool(first));
     set("m_tabIndex", c.Int(tab));
-    set("m_bVisible", c.Bool(true));
+    set("m_bVisible", c.Bool(shown));
   };
   // A choice row's fields, as the game's Takedown Camera row sets them, with
   // our natives behind it.
-  const auto choice_row = [&](const xerenge::settings::Row& row, int tab, bool first) {
+  const auto choice_row = [&](const xerenge::settings::Row& row, int tab, bool first, bool shown = true) {
     const uint32_t start = code.Start();
     set("m_focusDirs", c.String("Up/Down"));
     set("m_choiceFunc", c.String("XerengeGet"));
@@ -392,9 +431,9 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
     set_array("m_options", options);
     set_array("m_serviceFuncs", funcs);
     set_array("m_serviceFuncParams", params);
-    set("m_serviceName", c.String("DriverDetailsSettings"));
+    set("m_serviceName", c.String(pause ? "PauseOptionsManager" : "DriverDetailsSettings"));
     set("m_showIcon", c.Bool(false));
-    common(tab, first);
+    common(tab, first, shown);
     code.Op(0x00);
     code.Finish();
     return start;
@@ -460,12 +499,265 @@ bool Rebuild(const uint8_t* data, size_t data_size, const uint8_t* constants, si
     b.Set32(at + 60, events);
     new_items.push_back(at);
   };
-  const uint32_t choice_character = b.U32(speaker + 12);  // MenuChoice
+  const uint32_t choice_character = pause ? button_character + 1 : b.U32(speaker + 12);  // the choice row
 
-  const auto page = xerenge::settings::CurrentPage();
+  const auto page = pause ? xerenge::settings::kPause : xerenge::settings::CurrentPage();
   const auto rows = xerenge::settings::Rows(page);
   std::vector<std::string> left_out;
-  if (page == xerenge::settings::kMain) {
+  if (pause) {
+    // The options, in the middle of the screen as the pause menu's own items
+    // are: the game's two volume rows, then GRAPHICS; and, in their place
+    // once GRAPHICS is chosen, our rows - laid out now, hidden by the action below.
+    const char* kVolumes[] = {"btn_volume_effects", "btn_volume_music"};
+    for (uint32_t i = 0; i < item_count; ++i) {
+      const uint32_t item = b.U32(item_list + i * 4);
+      if (b.U32(item) != 3 || !(b.U32(item + 4) & 0x20)) {
+        continue;
+      }
+      const std::string name = b.Str(b.U32(item + 52));
+      for (int v = 0; v < 2; ++v) {
+        if (name == kVolumes[v]) {
+          b.Set32(item + 36, FloatBits(kPauseMainY[v]));
+        }
+      }
+    }
+    place(button_character, "xerenge_graphics_btn", kPauseButtonX, kPauseMainY[2],
+          button_row("GRAPHICS", 0, 2, false));
+    std::vector<std::string> graphics;
+    int tab = 3;
+    float y = kPausePageFirstY;
+    for (const auto& row : rows) {
+      const std::string name = "xerenge_row" + std::to_string(row.id);
+      place(choice_character, name, kPauseChoiceX, y, choice_row(row, tab++, false));
+      graphics.push_back(name);
+      y += kPauseStep;
+    }
+
+    // The action, after the screen's own has set it up (its constructor
+    // binds its key handler):
+    //   xerengeShow(true|false): one page or the other - its rows shown and
+    //     enabled, the other's hidden and disabled, the focus on its first
+    //     row, the title naming it;
+    //   A on GRAPHICS: xerengeShow(true);
+    //   the key handler: back on GRAPHICS' page goes to the volumes, anything
+    //     else to the screen's own handler (PauseOptionsMenu.mo_thisClass).
+    const uint32_t name_page = b.PutString("page");
+    const uint32_t name_k = b.PutString("k");
+    const uint32_t name_c = b.PutString("c");
+    const uint32_t action_code = code.Start();
+    const auto call0 = [&](const std::string& object, const char* method) {
+      code.Push({c.Int(0), c.String(object)});
+      code.Op(0x1C);
+      code.Push({c.String(method)});
+      code.Op(0x52);
+      code.Op(0x17);
+    };
+    const auto page_rows = [&](const std::vector<std::string>& names, bool on) {
+      for (const auto& name : names) {
+        if (!on) {
+          call0(name, "unhighlight");  // hidden highlighted, it stayed so
+        }
+        call0(name, on ? "show" : "hide");
+        call0(name, on ? "enable" : "disable");
+      }
+    };
+    const std::vector<std::string> main_rows = {"btn_volume_effects", "btn_volume_music", "xerenge_graphics_btn"};
+    const auto show_page = [&](bool to_graphics) {
+      page_rows(to_graphics ? main_rows : graphics, false);
+      page_rows(to_graphics ? graphics : main_rows, true);
+      if (to_graphics) {
+        // row.mIsVisible = true: goNext/goPrevious do nothing without it, and
+        // only the row's showOptions sets it, which a row hidden at first missed.
+        for (const auto& name : graphics) {
+          code.Push({c.String(name)});
+          code.Op(0x1C);
+          code.Push({c.String("mIsVisible"), c.Bool(true)});
+          code.Op(0x4F);
+        }
+      }
+      // gFM.selectItemByIdx(first row of the page)
+      code.Push({c.Int(to_graphics ? 3 : 2), c.Int(1), c.String("gFM")});
+      code.Op(0x1C);
+      code.Push({c.String("selectItemByIdx")});
+      code.Op(0x52);
+      code.Op(0x17);
+      // gStdTitle.screen.setText("$PauseTitle", subtitle)
+      code.Push({to_graphics ? c.String("[GRAPHICS]") : c.String("$PauseSubOptions"), c.String("$PauseTitle"), c.Int(2),
+                 c.String("gStdTitle")});
+      code.Op(0x1C);
+      code.Push({c.String("screen")});
+      code.Op(0x4E);
+      code.Push({c.String("setText")});
+      code.Op(0x52);
+      code.Op(0x17);
+      set("xerengeOnGraphics", c.Bool(to_graphics));
+    };
+    set("xerengeOnGraphics", c.Bool(false));
+    // The GRAPHICS page's rows, set up like any (hidden from the start, they came
+    // up without their values), put away until GRAPHICS is chosen.
+    page_rows(graphics, false);
+    // xerengeShowGraphics = function(m) { sound; show_page(true) }
+    code.Push({c.String("xerengeShowGraphics")});
+    {
+      const uint32_t body = code.BeginFunction(param_name);
+      code.Push({c.String("SfxEnum")});
+      code.Op(0x1C);
+      code.Push({c.String("Select")});
+      code.Op(0x4E);
+      code.Push({c.Int(1), c.String("MenuSoundManager")});
+      code.Op(0x1C);
+      code.Push({c.String("PlaySound")});
+      code.Op(0x52);
+      code.Op(0x17);
+      show_page(true);
+      code.EndFunction(body);
+    }
+    code.Op(0x1D);
+    // xerengeShowMain = function(page) { sound; show_page(false) }
+    code.Push({c.String("xerengeShowMain")});
+    {
+      const uint32_t body = code.BeginFunction(name_page);
+      code.Push({c.String("SfxEnum")});
+      code.Op(0x1C);
+      code.Push({c.String("Back")});
+      code.Op(0x4E);
+      code.Push({c.Int(1), c.String("MenuSoundManager")});
+      code.Op(0x1C);
+      code.Push({c.String("PlaySound")});
+      code.Op(0x52);
+      code.Op(0x17);
+      show_page(false);
+      code.EndFunction(body);
+    }
+    code.Op(0x1D);
+    // xerengeKeys = function(k, c) { ... }
+    code.Push({c.String("xerengeKeys")});
+    {
+      const uint32_t body = code.BeginFunction(std::vector<uint32_t>{name_k, name_c});
+      // Probe (XERENGE_MENU_PROBE): PauseOptionsManager.XerengeSet(-k), then -1000 if the
+      // focus manager has a handler of its own for the key, -2000 if not.
+      if (std::getenv("XERENGE_MENU_PROBE")) {
+        code.Push({c.Int(0), c.String("k")});
+        code.Op(0x1C);
+        code.Op(0x0B);  // Subtract: 0 - k
+        code.Push({c.Int(1), c.String("PauseOptionsManager")});
+        code.Op(0x1C);
+        code.Push({c.String("XerengeSet")});
+        code.Op(0x52);
+        code.Op(0x17);
+      }
+      code.Push({c.String("xerengeOnGraphics")});
+      code.Op(0x1C);
+      code.Op(0x12);  // Not
+      const uint32_t not_on_graphics = code.BranchIfTrue();
+      code.Push({c.String("k")});
+      code.Op(0x1C);
+      code.Push({c.String("INPUTCODE")});
+      code.Op(0x1C);
+      code.Push({c.String("MENUPAGEBACK")});
+      code.Op(0x4E);
+      code.Op(0x49);  // Equals2
+      code.Op(0x4C);  // PushDuplicate
+      const uint32_t is_back = code.BranchIfTrue();
+      code.Op(0x17);  // Pop
+      code.Push({c.String("k")});
+      code.Op(0x1C);
+      code.Push({c.String("INPUTCODE")});
+      code.Op(0x1C);
+      code.Push({c.String("MENUPAGEBACK2")});
+      code.Op(0x4E);
+      code.Op(0x49);
+      code.Land(is_back);
+      code.Op(0x12);
+      const uint32_t not_back = code.BranchIfTrue();
+      // xerengeShowMain(); return
+      code.Push({c.Int(0), c.String("xerengeShowMain")});
+      code.Op(0x3D);  // CallFunction
+      code.Op(0x17);
+      code.Push({c.Value(3, 0)});
+      code.Op(0x3E);  // Return
+      code.Land(not_on_graphics);
+      code.Land(not_back);
+      // PauseOptionsMenu.mo_thisClass.localEventHandler(k, c)
+      code.Push({c.String("c")});
+      code.Op(0x1C);
+      code.Push({c.String("k")});
+      code.Op(0x1C);
+      code.Push({c.Int(2), c.String("PauseOptionsMenu")});
+      code.Op(0x1C);
+      code.Push({c.String("mo_thisClass")});
+      code.Op(0x4E);
+      code.Push({c.String("localEventHandler")});
+      code.Op(0x52);
+      code.Op(0x17);
+      code.EndFunction(body);
+    }
+    code.Op(0x1D);
+    // xerengeArrows = function(m) { gFM's LEFT and RIGHT to m.goNext and
+    // m.goPrevious }, as a row's own setInputs binds them; on each of our
+    // rows' focus, as the volume rows' bindings stayed otherwise.
+    code.Push({c.String("xerengeArrows")});
+    {
+      const uint32_t body = code.BeginFunction(param_name);
+      for (const auto& [input, method] : {std::pair{"LEFT", "goNext"}, std::pair{"RIGHT", "goPrevious"}}) {
+        code.Push({c.String("m")});
+        code.Op(0x1C);
+        code.Push({c.String("m")});
+        code.Op(0x1C);
+        code.Push({c.String(method)});
+        code.Op(0x4E);
+        code.Push({c.String("INPUTCODE")});
+        code.Op(0x1C);
+        code.Push({c.String(input)});
+        code.Op(0x4E);
+        code.Push({c.Int(3), c.String("gFM")});
+        code.Op(0x1C);
+        code.Push({c.String("setOnInput")});
+        code.Op(0x52);
+        code.Op(0x17);
+      }
+      code.EndFunction(body);
+    }
+    code.Op(0x1D);
+    for (const auto& name : graphics) {
+      code.Push({c.String("xerengeArrows")});
+      code.Op(0x1C);
+      code.Push({c.Int(1), c.String(name)});
+      code.Op(0x1C);
+      code.Push({c.String("setOnFocus")});
+      code.Op(0x52);
+      code.Op(0x17);
+    }
+    // gEH.setLocalEventHandler(xerengeKeys)
+    code.Push({c.String("xerengeKeys")});
+    code.Op(0x1C);
+    code.Push({c.Int(1), c.String("gEH")});
+    code.Op(0x1C);
+    code.Push({c.String("setLocalEventHandler")});
+    code.Op(0x52);
+    code.Op(0x17);
+    // xerenge_graphics_btn.setOnInput(INPUTCODE.<A>, xerengeShowGraphics)
+    for (const char* input : {"MENUPAGEFORWARD", "MENUPAGEFORWARD2"}) {
+      code.Push({c.String("xerengeShowGraphics")});
+      code.Op(0x1C);
+      code.Push({c.String("INPUTCODE")});
+      code.Op(0x1C);
+      code.Push({c.String(input)});
+      code.Op(0x4E);
+      code.Push({c.Int(2), c.String("xerenge_graphics_btn")});
+      code.Op(0x1C);
+      code.Push({c.String("setOnInput")});
+      code.Op(0x52);
+      code.Op(0x17);
+    }
+    code.Op(0x00);
+    code.Finish();
+    b.Align(4);
+    const uint32_t action = b.Here();
+    b.Put32(1);
+    b.Put32(action_code);
+    new_items.push_back(action);
+  } else if (page == xerenge::settings::kMain) {
     // The game's rows (tabs 0-2), then ours: Language, and the buttons. Speaker
     // Config, which the game hides on an Xbox, goes: Language takes its place.
     left_out.push_back("speaker_btn");
@@ -628,18 +920,22 @@ REX_HOOK_RAW(sub_824277A0) {
   if (data && constants > data && constants - data <= 0x40000) {
     const uint8_t* raw_data = xerenge::GuestPointer(base, data);
     const size_t data_size = constants - data;
-    if (IsSettingsMovie(raw_data, data_size)) {
+    // Driver Details > Settings, or the race's pause menu's Options.
+    const bool settings = Holds(raw_data, data_size, "__Packages.DriverDetailsSettingsClass");
+    const bool pause = !settings && Holds(raw_data, data_size, "__Packages.PauseOptionsMenu");
+    if (settings || pause) {
       const uint8_t* raw_constants = xerenge::GuestPointer(base, constants);
       Blob new_data, new_constants;
       // The American release (a byte of its image that differs from the European
       // one's: 0 there, 1 here) has one language.
       xerenge::settings::SetSingleLanguage(*xerenge::GuestPointer(base, 0x825F7632) == 0);
-      if (Rebuild(raw_data, data_size, raw_constants, ConstantsSize(raw_constants), new_data, new_constants)) {
+      if (Rebuild(raw_data, data_size, raw_constants, ConstantsSize(raw_constants), pause, new_data, new_constants)) {
         // Kept for as long as the movie may run: a screen's worth, not freed.
         ctx.r4.u64 = ToGuest(base, new_data);
         ctx.r5.u64 = ToGuest(base, new_constants);
-        REXLOG_INFO("menu: settings movie rebuilt: data {:X} -> {:X} bytes, constants {:X} bytes, at {:08X}/{:08X}",
-                    data_size, new_data.bytes.size(), new_constants.bytes.size(), ctx.r4.u32, ctx.r5.u32);
+        REXLOG_INFO("menu: {} movie rebuilt: data {:X} -> {:X} bytes, constants {:X} bytes, at {:08X}/{:08X}",
+                    pause ? "pause options" : "settings", data_size, new_data.bytes.size(),
+                    new_constants.bytes.size(), ctx.r4.u32, ctx.r5.u32);
         // XERENGE_DUMP_MENU_MOVIE=<file>: the rebuilt blobs, data then constants, for tools/aptdump.
         if (const char* path = std::getenv("XERENGE_DUMP_MENU_MOVIE")) {
           if (FILE* file = std::fopen(path, "wb")) {

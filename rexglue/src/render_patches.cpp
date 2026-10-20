@@ -10,6 +10,7 @@
 // The addresses were checked against this image rather than assumed: all three
 // functions of the first patch exist here, and the byte of the second falls on
 // `li r3,0` inside sub_821436D0, which the patch turns into `li r3,1`.
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -20,16 +21,34 @@
 #include "guest_memory.h"
 
 namespace {
-bool SkipSkyBloom() {
-  static const bool enabled = std::getenv("XERENGE_NO_BLOOM") != nullptr;
-  return enabled;
+// From the environment at the start (the launcher's bloom and motion_blur), then
+// as the game's Settings or pause menu set them (XerengeSetMenuBloom below).
+std::atomic<bool>& SkyBloomSkipped() {
+  static std::atomic<bool> skipped{std::getenv("XERENGE_NO_BLOOM") != nullptr};
+  return skipped;
 }
 
-bool SkipMotionBlur() {
-  static const bool enabled = std::getenv("XERENGE_NO_MOTION_BLUR") != nullptr;
-  return enabled;
+std::atomic<bool>& MotionBlurSkipped() {
+  static std::atomic<bool> skipped{std::getenv("XERENGE_NO_MOTION_BLUR") != nullptr};
+  return skipped;
 }
+
+bool SkipSkyBloom() { return SkyBloomSkipped().load(std::memory_order_relaxed); }
+bool SkipMotionBlur() { return MotionBlurSkipped().load(std::memory_order_relaxed); }
 }  // namespace
+
+void XerengeSetMenuBloomFlag(bool on);
+
+// The menus' bloom and motion blur: the passes here at once, and the bloom
+// for plume's shaders through the frame clock (game_timing.cpp).
+void XerengeSetMenuBloom(bool on) {
+  SkyBloomSkipped().store(!on, std::memory_order_relaxed);
+  XerengeSetMenuBloomFlag(on);
+}
+
+void XerengeSetMenuMotionBlur(bool on) {
+  MotionBlurSkipped().store(!on, std::memory_order_relaxed);
+}
 
 extern "C" void __imp__sub_821439E8(PPCContext& __restrict, uint8_t*);
 extern "C" void __imp__sub_82173190(PPCContext& __restrict, uint8_t*);

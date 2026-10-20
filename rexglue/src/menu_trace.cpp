@@ -56,8 +56,9 @@ REX_HOOK_RAW(sub_8242BDB0) {
     if (seen.insert(text).second) {
       REXLOG_INFO("menu: native {} = {:08X} (from {:08X})", text, LoadU32(base, value + 32), caller);
     }
-    // The Settings screen's adapter hands over IsInControl last (xerenge_menu.cpp).
-    settings_done = text == "IsInControl";
+    // Ours (xerenge_menu.cpp) beside the volume natives, which the Settings
+    // screen's adapter and the pause menu's both hand over.
+    settings_done = text == "IncreaseMusicVolume";
   }
   __imp__sub_8242BDB0(ctx, base);
   if (settings_done) {

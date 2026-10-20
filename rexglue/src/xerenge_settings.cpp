@@ -18,6 +18,8 @@ REXCVAR_DECLARE(std::string, gamertag);
 
 void XerengeSetMenuAntiAliasing(int32_t mode);
 void XerengeSetMenuSharpening(float strength);
+void XerengeSetMenuBloom(bool on);
+void XerengeSetMenuMotionBlur(bool on);
 
 namespace xerenge::settings {
 namespace {
@@ -143,8 +145,17 @@ const std::vector<Setting>& Settings() {
       XerengeSetMenuSharpening(kStrength[option]);
     };
     s.push_back(sharpen);
-    s.push_back({15, kGraphics, "BLOOM", "bloom", OffOn(), 0});
-    s.push_back({16, kGraphics, "BLUR", "motion_blur", OffOn(), 0});
+    // Bloom and blur at once as far as the game's passes go (render_patches.cpp,
+    // plume's pipelines); the blur's motion vectors, which plume draws only when
+    // it starts with the blur on, then follow at the next start.
+    Setting bloom{15, kGraphics, "BLOOM", "bloom", OffOn(), 0};
+    bloom.restart = false;
+    bloom.live = [](int option) { XerengeSetMenuBloom(option == 1); };
+    s.push_back(bloom);
+    Setting blur{16, kGraphics, "BLUR", "motion_blur", OffOn(), 0};
+    blur.restart = false;
+    blur.live = [](int option) { XerengeSetMenuMotionBlur(option == 1); };
+    s.push_back(blur);
 
     // The frame rates: 30 is fps_30, 120 frame_generation (for the race and
     // Crash mode alike), Crash mode's 60 crash_interpolation.
@@ -214,6 +225,19 @@ std::string PageTitle(Page page) {
 
 std::vector<Row> Rows(Page page) {
   std::vector<Row> rows;
+  if (page == kPause) {
+    // What changes without a restart, in the order the pause menu shows it.
+    for (const int id : {15, 16, 14, 13}) {
+      if (const Setting* s = Find(id)) {
+        Row row{s->label, {}, s->id};
+        for (const Option& o : s->options) {
+          row.options.push_back(o.label);
+        }
+        rows.push_back(std::move(row));
+      }
+    }
+    return rows;
+  }
   for (const Setting& s : Settings()) {
     if (s.page != page || (g_single_language && s.key && std::string(s.key) == "language")) {
       continue;

@@ -15,6 +15,7 @@
  */
 #include "plume_renderer/plume_draw.h"
 #include "plume_renderer/plume_etc2_cache.h"
+#include "plume_renderer/plume_postfx.h"
 #include "diagnostics.h"
 #include "plume_renderer/plume_parallel.h"
 
@@ -3114,7 +3115,11 @@ plume::RenderPipeline* PlumeDrawContext::GetOrCreatePipeline(
                          (uint32_t(key_depth.function) << 22) |
                          (uint32_t(WriteMaskForRt0(color_mask >> 4)) << 26) |
                          ((alpha_test ? 1u : 0u) << 30) | ((depth_bias ? 1u : 0u) << 31);
-  PipelineKey key{vs_hash, ps_hash, uint32_t(topology), state, (blend_control >> 16) | (cull << 16)};
+  // The bloom setting picks the shaders' bloom term (bloom_in_place, below), and
+  // the menus change it while the game runs: a pipeline for each.
+  static const bool grey_sky_key = std::getenv("XERENGE_GREY_SKY") != nullptr;
+  const uint32_t bloom_bit = BloomOff() && !grey_sky_key ? 1u << 31 : 0u;
+  PipelineKey key{vs_hash, ps_hash, uint32_t(topology), state, (blend_control >> 16) | (cull << 16) | bloom_bit};
   // XERENGE_PIPELINE_LOG=1: every pipeline's full guest blend state.
   static const bool pipeline_log = std::getenv("XERENGE_PIPELINE_LOG") != nullptr;
   if (auto it = pipelines_.find(key); it != pipelines_.end()) {
@@ -3227,8 +3232,8 @@ plume::RenderPipeline* PlumeDrawContext::GetOrCreatePipeline(
   // SPEC_CONSTANT_BLOOM_IN_PLACE (1 << 6) with bloom off (XERENGE_NO_BLOOM):
   // the composite takes its bloom term from the pixel itself, so the sky
   // keeps its blue without the glare (XenosRecomp, the texture fetch).
-  static const bool bloom_in_place = std::getenv("XERENGE_NO_BLOOM") != nullptr &&
-                                     std::getenv("XERENGE_GREY_SKY") == nullptr;
+  static const bool grey_sky = std::getenv("XERENGE_GREY_SKY") != nullptr;
+  const bool bloom_in_place = BloomOff() && !grey_sky;
   const plume::RenderSpecConstant spec(
       0, (alpha_test ? (1u << 1) : 0u) | (bloom_in_place ? (1u << 6) : 0u));
   desc.specConstants = &spec;

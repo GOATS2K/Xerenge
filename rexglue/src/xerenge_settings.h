@@ -12,7 +12,8 @@
 
 namespace xerenge::settings {
 
-enum Page : int { kMain = 0, kGraphics = 1, kHacks = 2, kDebug = 3 };
+// kPause: the race's pause menu's Options, with what changes without a restart.
+enum Page : int { kMain = 0, kGraphics = 1, kHacks = 2, kDebug = 3, kPause = 4 };
 
 // A row: a choice between options, or (no options) a line shown as it is.
 struct Row {

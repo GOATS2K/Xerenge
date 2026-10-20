@@ -129,6 +129,7 @@ int32_t Argument(PPCContext& ctx, uint8_t* base) {
 void XerengeGet(PPCContext& ctx, uint8_t* base) {
   const int32_t id = Argument(ctx, base);
   const int option = settings::Get(id);
+  REXLOG_INFO("menu: XerengeGet({}) = {}", id, option);
   sub_821C84A8(ctx, base);
   if (ctx.r3.u32) {
     StoreU32(base, ctx.r3.u32 + 8, uint32_t(option));
@@ -139,6 +140,7 @@ void XerengeGet(PPCContext& ctx, uint8_t* base) {
 // rows do not read it.
 void XerengeSet(PPCContext& ctx, uint8_t* base) {
   const int32_t code = Argument(ctx, base);
+  REXLOG_INFO("menu: XerengeSet({})", code);
   settings::Set(code / 16, code % 16);
   sub_821C7588(ctx, base);
 }

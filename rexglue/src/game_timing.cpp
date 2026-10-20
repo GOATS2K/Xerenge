@@ -69,6 +69,8 @@ struct FrameClock {
   int32_t menu_anti_aliasing = -1;
   // Likewise the sharpening, 0 to 1, or negative while unchanged.
   float menu_sharpening = -1.0f;
+  // And the bloom: 1 on, 0 off, -1 unchanged.
+  int32_t menu_bloom = -1;
 };
 FrameClock g_clock;
 uint32_t g_clock_timer = 0;
@@ -302,4 +304,8 @@ void XerengeSetMenuAntiAliasing(int32_t mode) {
 
 void XerengeSetMenuSharpening(float strength) {
   g_clock.menu_sharpening = strength;
+}
+
+void XerengeSetMenuBloomFlag(bool on) {
+  g_clock.menu_bloom = on ? 1 : 0;
 }
