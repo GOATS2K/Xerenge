@@ -3,6 +3,7 @@
 // installer writes and the launcher reads at every start - behind them.
 #include "xerenge_settings.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -84,6 +85,18 @@ void WriteConf(const std::string& key, const std::string& value) {
   REXLOG_INFO("menu: {} = {} (in {})", key, value, path.string());
 }
 
+std::string EnvValue(const char* name) {
+  const char* value = std::getenv(name);
+  return value ? value : "";
+}
+
+std::string Lower(std::string text) {
+  for (auto& ch : text) {
+    ch = char(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return text;
+}
+
 std::string ConfValue(const std::string& key, const std::string& fallback) {
   const auto values = ReadConf();
   const auto found = values.find(key);
@@ -112,6 +125,9 @@ struct Setting {
   int fallback = 0;
   bool restart = true;
   std::function<void(int)> live;  // applied without a restart
+  // For those: the option the game started with (its environment, as the launcher
+  // or run.sh set it), which is what it shows until one is chosen.
+  std::function<int()> running;
   // Or one of several keys: its own reading and writing.
   std::function<int()> get;
   std::function<void(int)> set;
@@ -136,6 +152,10 @@ const std::vector<Setting>& Settings() {
     Setting aa{13, kGraphics, "ANTI-ALIASING", "aa", {{"OFF", "off"}, {"FXAA", "fxaa"}, {"SMAA", "smaa"}}, 0};
     aa.restart = false;
     aa.live = [](int option) { XerengeSetMenuAntiAliasing(option); };
+    aa.running = [] {
+      const std::string name = Lower(EnvValue("XERENGE_AA"));
+      return name == "fxaa" ? 1 : name == "smaa" ? 2 : 0;
+    };
     s.push_back(aa);
     Setting sharpen{14, kGraphics, "SHARPENING", "sharpen",
                     {{"OFF", "0"}, {"LIGHT", "0.3"}, {"MEDIUM", "0.6"}, {"STRONG", "1"}}, 0};
@@ -144,6 +164,10 @@ const std::vector<Setting>& Settings() {
       static const float kStrength[] = {0.0f, 0.3f, 0.6f, 1.0f};
       XerengeSetMenuSharpening(kStrength[option]);
     };
+    sharpen.running = [] {
+      const float strength = std::strtof(EnvValue("XERENGE_SHARPEN").c_str(), nullptr);
+      return strength >= 0.8f ? 3 : strength >= 0.45f ? 2 : strength >= 0.15f ? 1 : 0;
+    };
     s.push_back(sharpen);
     // Bloom and blur at once as far as the game's passes go (render_patches.cpp,
     // plume's pipelines); the blur's motion vectors, which plume draws only when
@@ -151,10 +175,12 @@ const std::vector<Setting>& Settings() {
     Setting bloom{15, kGraphics, "BLOOM", "bloom", OffOn(), 0};
     bloom.restart = false;
     bloom.live = [](int option) { XerengeSetMenuBloom(option == 1); };
+    bloom.running = [] { return std::getenv("XERENGE_NO_BLOOM") ? 0 : 1; };
     s.push_back(bloom);
     Setting blur{16, kGraphics, "BLUR", "motion_blur", OffOn(), 0};
     blur.restart = false;
     blur.live = [](int option) { XerengeSetMenuMotionBlur(option == 1); };
+    blur.running = [] { return std::getenv("XERENGE_NO_MOTION_BLUR") ? 0 : 1; };
     s.push_back(blur);
 
     // The frame rates: 30 is fps_30, 120 frame_generation (for the race and
@@ -205,6 +231,7 @@ const Setting* Find(int id) {
 }
 
 Page g_page = kMain;
+std::map<int, int> g_live;  // live settings chosen in the menus: id -> option
 bool g_single_language = false;
 bool g_restart = false;
 
@@ -275,6 +302,11 @@ int Get(int id) {
   if (!s) {
     return 0;
   }
+  if (s->running) {
+    // What the game runs with now: as it started, or as chosen since.
+    const auto chosen = g_live.find(id);
+    return chosen != g_live.end() ? chosen->second : s->running();
+  }
   if (s->get) {
     return s->get();
   }
@@ -302,6 +334,7 @@ void Set(int id, int option) {
   }
   if (s->live) {
     s->live(option);
+    g_live[id] = option;
   }
   g_restart = g_restart || s->restart;
 }
