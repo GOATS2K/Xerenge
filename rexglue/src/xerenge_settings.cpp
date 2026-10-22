@@ -3,8 +3,10 @@
 // installer writes and the launcher reads at every start - behind them.
 #include "xerenge_settings.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -12,6 +14,7 @@
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
+#include <rex/system/kernel_state.h>
 
 REXCVAR_DECLARE(std::string, game_data_root);
 REXCVAR_DECLARE(std::string, lobby_server);
@@ -237,6 +240,21 @@ std::map<int, int> g_live;  // live settings chosen in the menus: id -> option
 bool g_single_language = false;
 bool g_restart = false;
 
+
+// The game's achievements (the disc's XDBF, as the SDK read it), in its order.
+std::vector<rex::system::AchievementInfo> Achievements() {
+  auto* kernel_state = REX_KERNEL_STATE();
+  return kernel_state ? kernel_state->achievements().ListAchievements()
+                      : std::vector<rex::system::AchievementInfo>{};
+}
+
+std::string Upper(std::string text) {
+  for (char& ch : text) {
+    ch = char(std::toupper(static_cast<unsigned char>(ch)));
+  }
+  return text;
+}
+
 }  // namespace
 
 Page CurrentPage() { return g_page; }
@@ -248,6 +266,14 @@ std::string PageTitle(Page page) {
     case kGraphics: return "[GRAPHICS]";
     case kHacks: return "[HACKS]";
     case kDebug: return "[DEBUG]";
+    case kAchievements: {
+      const auto list = Achievements();
+      size_t earned = 0;
+      for (const auto& a : list) {
+        earned += REX_KERNEL_STATE()->achievements().IsUnlocked(a.id) ? 1 : 0;
+      }
+      return "[ACHIEVEMENTS " + std::to_string(earned) + "/" + std::to_string(list.size()) + "]";
+    }
     default: return {};
   }
 }
@@ -339,6 +365,35 @@ void Set(int id, int option) {
     g_live[id] = option;
   }
   g_restart = g_restart || s->restart;
+}
+
+std::vector<AchievementRow> AchievementRows() {
+  std::vector<AchievementRow> earned, locked;
+  auto* kernel_state = REX_KERNEL_STATE();
+  if (!kernel_state) {
+    return {};
+  }
+  const auto& manager = kernel_state->achievements();
+  for (const auto& a : Achievements()) {
+    AchievementRow row{Upper(a.label), std::to_string(a.gamerscore) + " G", "LOCKED"};
+    row.description = manager.IsUnlocked(a.id) || a.unachieved_description.empty() ? a.description
+                                                                                 : a.unachieved_description;
+    if (!manager.IsUnlocked(a.id)) {
+      locked.push_back(std::move(row));
+      continue;
+    }
+    // The day, from its FILETIME (100 ns steps since 1601).
+    const std::time_t when =
+        std::time_t(manager.GetUnlockTime(a.id) / 10000000ull - 11644473600ull);
+    char day[16] = "EARNED";
+    if (const std::tm* tm = std::localtime(&when)) {
+      std::strftime(day, sizeof(day), "%d.%m.%Y", tm);
+    }
+    row.state = day;
+    earned.push_back(std::move(row));
+  }
+  earned.insert(earned.end(), locked.begin(), locked.end());
+  return earned;
 }
 
 bool TakeRestartNeeded() {
