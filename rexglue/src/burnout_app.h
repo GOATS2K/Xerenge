@@ -8,6 +8,7 @@
 
 #include "online_lobby.h"
 #include "plume_d3d.h"
+#include "xerenge_settings.h"
 
 class BurnoutApp : public rex::ReXApp {
  public:
@@ -18,6 +19,8 @@ class BurnoutApp : public rex::ReXApp {
     return std::unique_ptr<BurnoutApp>(new BurnoutApp(ctx, "burnout",
         PPCImageConfig));
   }
+
+  void OnPreSetup(rex::RuntimeConfig&) override { xerenge::settings::ApplyAtStart(); }
 
   void OnPostSetup() override {
     xerenge::plume_d3d::InstallPlumeRuntimeHooks();

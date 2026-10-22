@@ -41,4 +41,7 @@ void Set(int id, int option);
 // Whether a choice made since the last call needs the game started again.
 bool TakeRestartNeeded();
 
+// What must be known before the renderer starts, from xerenge.conf (RenderDoc).
+void ApplyAtStart();
+
 }  // namespace xerenge::settings

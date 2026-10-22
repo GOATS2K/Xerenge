@@ -348,3 +348,19 @@ bool TakeRestartNeeded() {
 }
 
 }  // namespace xerenge::settings
+
+namespace xerenge::settings {
+
+void ApplyAtStart() {
+  // Read here as well as by the launcher: a start without it (run.sh, an older
+  // launcher) would otherwise still load RenderDoc and show its overlay.
+  if (!ConfFlag("renderdoc", true)) {
+#if defined(_WIN32)
+    _putenv_s("XERENGE_NO_RENDERDOC", "1");
+#else
+    setenv("XERENGE_NO_RENDERDOC", "1", 1);
+#endif
+  }
+}
+
+}  // namespace xerenge::settings
