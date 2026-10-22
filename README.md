@@ -182,12 +182,6 @@ Open:
   runs go through X11.
 * plume: a black frame still flashes very occasionally, and a texture
   sometimes shows wrong for half a second during a race.
-* With bloom turned off (the installer's unchecked "Bloom on") the sky looks
-  grey and the frame dull. The title draws its sky pale and counts on the
-  bloom pass to brighten it; the patch, after boma's for Xenia, empties the
-  bloom kernel, so that brightness never arrives. Shrinking the kernel instead
-  leaves quarter-resolution halos around edges, and raising the exposure
-  brightens the dark areas along with the sky - neither is a fix yet.
 
 ## What is not here
 
