@@ -10,6 +10,8 @@
 #include "plume_d3d.h"
 #include "xerenge_settings.h"
 
+void XerengeAchievementToastStart();
+
 class BurnoutApp : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -23,6 +25,7 @@ class BurnoutApp : public rex::ReXApp {
   void OnPreSetup(rex::RuntimeConfig&) override { xerenge::settings::ApplyAtStart(); }
 
   void OnPostSetup() override {
+    XerengeAchievementToastStart();
     xerenge::plume_d3d::InstallPlumeRuntimeHooks();
     // --online: this copy's lobby is up (and heard on the LAN) from the start,
     // not only once its own player signs in.
