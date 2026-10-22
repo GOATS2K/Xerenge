@@ -74,60 +74,73 @@ collect them. `rexglue/tools/make_runtime_shader_recipe` (built by
 `scripts/build-tools.sh`) refreshes the recipe from the shaders a run dumps
 (`XERENGE_DUMP_UCODE=1`).
 
-## Two lines of work
+## Plume
 
-**`main` - ReXGlue.** Current. The recompiler and system layer come from
-[ReXGlue](https://github.com/rexglue/rexglue-sdk), used through our fork
-[rexglue-xerenge](https://github.com/shipa-2/rexglue-xerenge), which carries
-fixes found while bringing this title up - including the recompiler defect that
-made the entire frontend draw blue. The project itself - manifest, function
-boundaries, app skeleton, build glue - is in [`rexglue/`](rexglue/), with the
-detail in [`rexglue/README.md`](rexglue/README.md).
+Burnout Revenge draws through **plume**, this project's own GPU plugin
+([`rexglue/src/plume_renderer/`](rexglue/src/plume_renderer/), the default
+everywhere `./run.sh` runs it), on top of
+[ReXGlue](https://github.com/rexglue/rexglue-sdk) through our fork
+[rexglue-xerenge](https://github.com/shipa-2/rexglue-xerenge). The project
+itself - manifest, function boundaries, app skeleton, build glue - is in
+[`rexglue/`](rexglue/), with the detail in
+[`rexglue/README.md`](rexglue/README.md).
 
-**`legacy` - XenonRecomp.** Frozen, and still buildable. A runtime written for
-this project ([`XerengeRuntime/`](XerengeRuntime/)) on top of
+Instead of emulating the Xenos command processor, plume takes the title's
+Direct3D calls directly and draws with them. That one difference is where
+most of what makes this build solid and fast comes from:
+
+* **No GPU state caches to keep correct.** A command-processor emulator needs
+  a texture cache for every Xenos format, an EDRAM render-target cache, and a
+  shader cache kept in step with whatever the title binds. Drawing from the
+  D3D calls directly needs none of that - the host GPU driver already does it.
+* **Shaders are translated ahead of time**, not recompiled at runtime, so
+  there is no JIT warm-up and no stutter the first time the title hits a new
+  one.
+* **Render targets are real host textures**, read back directly rather than
+  reconstructed from an emulated EDRAM layout.
+* **The frame's CPU work is spread out** - texture checks, vertex unpacking -
+  over up to eight worker threads, instead of one emulation thread carrying
+  all of it.
+* **It runs everywhere Vulkan does**, from a desktop GPU down to a phone's,
+  without a software GPU emulator in the way.
+
+A second GPU plugin, **xenos** (`./run.sh --xenos`, the installer's "xenia
+render") - ReXGlue's port of Xenia's GPU emulation, with shader translation at
+runtime - is kept as the reference for when plume draws something
+differently, and as how the project's earlier line, `legacy`
+([`XerengeRuntime/`](XerengeRuntime/) on
 [XenonRecomp-xerenge](https://github.com/shipa-2/XenonRecomp-xerenge) and
-[XenosRecomp-xerenge](https://github.com/shipa-2/XenosRecomp-xerenge). It stays
-useful as a second opinion: rendering the same frame correctly there is what
-bounded the colour defect to the recompiler rather than the graphics pipeline.
-
-The move was not about the recompilation approach, which is the same in both. It
-was about the system layer. The previous line reached the point of needing a
-texture cache for every Xenos format, an EDRAM render target cache, and a shader
-cache kept in step with whatever the title binds - all of which ReXGlue already
-has.
-
-**Two renderers.** `main` draws through either of two GPU plugins:
-
-* **plume** (`./run.sh`, the default everywhere) - this project's own,
-  in [`rexglue/src/plume_renderer/`](rexglue/src/plume_renderer/). It takes the
-  title's Direct3D calls rather than emulating the command processor, draws with
-  the shaders translated ahead of time, and keeps the title's render targets as
-  real host textures. It spreads the frame's CPU work (texture checks, vertex
-  unpacking) over up to eight worker threads.
-* **xenos** (`./run.sh --xenos`, the installer's "xenia render") - ReXGlue's port of
-  Xenia's GPU emulation, with shader translation at runtime. Slower, and the
-  reference when plume draws something differently.
+[XenosRecomp-xerenge](https://github.com/shipa-2/XenosRecomp-xerenge), frozen
+but still buildable), proved that an early colour defect was in the recompiler
+and not the graphics pipeline, before the move to ReXGlue.
 
 ## Where it stands
 
-The title is fully playable: it boots, reaches the title screen, loads a save,
-runs through car select, and races render at 60 fps. The audio is complete -
-engine sounds, crashes, the interface and the licensed soundtrack - and the
-intro videos play. The frontend, the videos and the 3D world are
-colour-correct.
+The title is fully playable on both supported releases: it boots, reaches the
+title screen, loads a save, runs through car select, and races render at
+60 fps. The audio is complete - engine sounds, crashes, the interface and the
+licensed soundtrack - and the intro videos play. The frontend, the videos and
+the 3D world are colour-correct. It runs on Linux, Windows, Android (phones
+with a Vulkan 1.0+ GPU) and macOS (Apple silicon).
+
+All of it besides the disc image and the install path is a setting, not a
+patch: the installer and `xerenge.conf` cover them, and most are reachable
+from the running game too, under Driver Details > Settings (GRAPHICS, HACKS,
+DEBUG) - changing one there and confirming it offers a restart that applies
+it at once, without reinstalling.
 
 The game runs at its own pace, not the renderer's. Its logic steps on a fixed
-timer, and each frame is held to the console's 60 Hz vblank - 30 fps in Crash
-mode, as on the console - so a faster machine or a high refresh-rate monitor
-does not speed it up. `XERENGE_UNLOCK_FPS=1` lifts the cap: frames are drawn as
-fast as they can be, and the logic follows the wall clock instead.
-Interpolating the frames drawn between logic steps is work in progress
-(`XERENGE_INTERPOLATION=1`); without it, frames drawn between two steps show
-the same moment.
+timer, and each frame is held to the console's 60 Hz vblank by default - 30
+fps in Crash mode, as on the console. A 30 fps lock (two logic steps a frame,
+everywhere) and frame generation (a frame drawn between each two of the
+game's, for 90-120 Hz screens, including through Crash mode's lock) are both
+shipped settings, off by default; `XERENGE_UNLOCK_FPS=1` instead lifts the cap
+entirely and lets the logic follow the wall clock.
 
 Textures are loaded with their full mip chains from the title's memory, and
-sampled with the filtering and anisotropy the title asks for.
+sampled with the filtering and anisotropy the title asks for; on a GPU with no
+hardware texture compression (common on phones), they are re-encoded to ETC2
+once and cached, rather than decompressed every time.
 
 The frame can be anti-aliased and sharpened as it is presented
 (`plume_postfx.cpp`): FXAA, after NVIDIA's FXAA 3.11, or SMAA 1x, and AMD's
@@ -137,9 +150,10 @@ implementation of Jimenez, Echevarria, Masia, Navarro and Gutierrez (MIT
 licence, `rexglue/thirdparty/smaa`) at its HIGH preset, with edges found from
 luma: three passes - edges, blending weights from its two lookup tables, the
 blend - where FXAA is one. All are off by default - the console had none of
-them, and with them off nothing is recorded. The settings are live
-(`SetAntiAliasing`, `SetSharpening`, read once a frame); `XERENGE_AA` and
-`XERENGE_SHARPEN` set where they start.
+them, and with them off nothing is recorded. Colour grade, brightness and
+shadow lift are adjustable too, live, over the console's own look. The
+settings are live (read once a frame); `XERENGE_AA` and `XERENGE_SHARPEN` set
+where they start.
 
 The frame is drawn at the window's resolution rather than the console's 720p,
 and the copies of it the post-processing reads are kept at that size. A pass
@@ -150,18 +164,30 @@ flickered through the glare and the whole picture shimmered. Such a copy is
 filtered down to its guest size first (halved while a half covers it, then
 the last step), at any window size and shape.
 
+**Online.** `ealobby`, a lobby server standing in for EA's, is already
+pointed at by default (a self-hosted one), so online play works without
+running anything yourself; a self-hosted server also carries the Locker
+(Burnout Clips: saving, sharing and recommending replays, the top 20 and
+recent-players rankings) and serves the game's News screen the latest
+release's notes. Running your own `ealobby` instead is one flag away for a
+LAN or a server of your own.
+
+**Achievements** are read from the title's own data and shown as it earns
+them - a notice drawn over the game without pausing it, and the full list
+with their descriptions under Player File > Stats.
+
 Open:
 
 * The Wayland surface extension is offered by the loader but never enabled, so
   runs go through X11.
 * plume: a black frame still flashes very occasionally, and a texture
   sometimes shows wrong for half a second during a race.
-* With bloom turned off (`--no-bloom`, or the installer's unchecked "bloom on")
-  the sky looks grey and the frame dull. The title draws its sky pale and
-  counts on the bloom pass to brighten it; the patch, after boma's for Xenia,
-  empties the bloom kernel, so that brightness never arrives. Shrinking the
-  kernel instead leaves quarter-resolution halos around edges, and raising the
-  exposure brightens the dark areas along with the sky - neither is a fix yet.
+* With bloom turned off (the installer's unchecked "Bloom on") the sky looks
+  grey and the frame dull. The title draws its sky pale and counts on the
+  bloom pass to brighten it; the patch, after boma's for Xenia, empties the
+  bloom kernel, so that brightness never arrives. Shrinking the kernel instead
+  leaves quarter-resolution halos around edges, and raising the exposure
+  brightens the dark areas along with the sky - neither is a fix yet.
 
 ## What is not here
 
