@@ -361,7 +361,7 @@ void Server::Run() {
       }
       fds.push_back(MakePollFd(fd, short(POLLIN | (connection->out.empty() ? 0 : POLLOUT))));
     }
-    if (PollWait(fds, 1000) < 0) {
+    if (PollWait(fds, held_games_.empty() ? 1000 : 50) < 0) {
       const int code = LastSocketError();
       if (Interrupted(code)) {
         continue;
@@ -369,6 +369,7 @@ void Server::Run() {
       Log("ealobby: poll: " + SocketErrorString(code));
       break;
     }
+    SendHeldGames();
     if (fds[1].revents & POLLIN) {
       Accept(directory_listener_, Role::kDirectory);
     }
@@ -853,7 +854,7 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     }
     connection.user_params = field("USERPARAMS", connection.user_params);
     reply_with(GameRecord(*game, connection));
-    SendGameToPlayers(*game);
+    SendGameAfterRemoteJoin(*game, connection);
     SendWho(connection);
     return;
   }
@@ -894,7 +895,7 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     connection.game = game->id;
     connection.user_params = field("USERPARAMS", connection.user_params);
     reply_with(GameRecord(*game, connection));
-    SendGameToPlayers(*game);
+    SendGameAfterRemoteJoin(*game, connection);
     SendWho(connection);
     return;
   }
@@ -1183,6 +1184,31 @@ void Server::SendGameToPlayers(const Game& game) {
       Log("lobby -> +mgm to " + player->user + " " + Printable(FormatFields(record)));
       Send(*player, Encode("+mgm", record));
     }
+  }
+}
+
+void Server::SendGameAfterRemoteJoin(const Game& game, Connection& joiner) {
+  if (joiner.role != Role::kRemote) {
+    SendGameToPlayers(game);
+    return;
+  }
+  const Fields record = GameRecord(game, joiner);
+  Send(joiner, Encode("+mgm", record));
+  held_games_.push_back({std::chrono::steady_clock::now() + std::chrono::milliseconds(250), game.id});
+}
+
+void Server::SendHeldGames() {
+  const auto now = std::chrono::steady_clock::now();
+  for (auto it = held_games_.begin(); it != held_games_.end();) {
+    if (it->first > now) {
+      ++it;
+      continue;
+    }
+    // As it is by then: whoever joined or left since included.
+    if (const auto game = games_.find(it->second); game != games_.end()) {
+      SendGameToPlayers(game->second);
+    }
+    it = held_games_.erase(it);
   }
 }
 
