@@ -130,6 +130,7 @@ jobs:
           mkdir -p "$payload/bin" "$payload/tools"
           cp rexglue/build/burnout "$payload/bin/burnout_eu"
           find rexglue/build rexglue-sdk/out/linux-amd64 -maxdepth 2 -name '*.so*' -not -path '*/Debug/*' -exec cp -a {} "$payload/bin/" \;
+          cp rexglue/plume_pipelines.txt "$payload/bin/"  # the pipelines met playing it through: made during the logos
           # The launcher (launcher.cpp), beside the game once installed.
           c++ -std=c++17 -O2 rexglue/installer/launcher.cpp -o "$payload/burnout_revenge"
           cp tools/bin/extract-image "$payload/tools/"
@@ -279,6 +280,7 @@ jobs:
           mkdir -p "$payload/bin" "$payload/tools"
           cp rexglue/build/burnout.exe "$payload/bin/burnout_eu.exe"
           find rexglue/build rexglue-sdk/out/win-amd64 -maxdepth 2 -name '*.dll' -not -path '*/Debug/*' -exec cp {} "$payload/bin/" \;
+          cp rexglue/plume_pipelines.txt "$payload/bin/"  # the pipelines met playing it through: made during the logos
           cp tools/bin/extract-image.exe "$payload/tools/"
           cp "rexglue/installer/build/Burnout Revenge.exe" "$payload/"
           cp rexglue/installer/build/xerenge-installer.exe "$package/"
@@ -554,6 +556,7 @@ jobs:
           mkdir -p "$payload/bin" "$payload/tools"
           cp rexglue/build/burnout "$payload/bin/burnout_eu"
           find rexglue/build rexglue-sdk/out/mac-arm64 -maxdepth 2 -name '*.dylib' -not -path '*/Debug/*' -exec cp -a {} "$payload/bin/" \;
+          cp rexglue/plume_pipelines.txt "$payload/bin/"  # the pipelines met playing it through: made during the logos
           cp -R rexglue/build/vulkan "$payload/bin/vulkan"
           # The launcher (launcher.cpp), beside the game once installed.
           c++ -std=c++17 -O2 rexglue/installer/launcher.cpp -o "$payload/burnout_revenge"

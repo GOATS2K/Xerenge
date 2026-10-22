@@ -2481,6 +2481,10 @@ void PlumeGraphicsSystem::InitializeShaderStorage(const std::filesystem::path& c
                                                   uint32_t title_id, bool blocking) {
   // The DXT textures re-encoded as ETC2 (a GPU without BC) are kept there.
   Etc2Cache::Instance().SetRoot(cache_root);
+  // The pipelines met in earlier runs, made ahead (PlumeDrawContext::SetPipelineList).
+  if (draw_context_ && !cache_root.empty()) {
+    draw_context_->SetPipelineList((cache_root / "plume_pipelines.txt").string());
+  }
   (void)blocking;
 
   PlumeShaderCache& cache = PlumeShaderCache::Instance();
