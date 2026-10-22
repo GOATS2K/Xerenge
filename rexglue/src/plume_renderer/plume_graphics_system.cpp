@@ -270,7 +270,9 @@ bool PlumeGraphicsSystem::InitializePlumeDevice() {
   // overlay and F12 captured nothing. The library is only present where
   // RenderDoc is installed, so elsewhere this does nothing.
 #if !REX_PLATFORM_MAC  // no RenderDoc on macOS: the SDK leaves its API type opaque there
-  if (!renderdoc_api_) {
+  // XERENGE_NO_RENDERDOC=1 (Debug > RenderDoc off): not loaded, so no overlay.
+  const char* no_renderdoc = std::getenv("XERENGE_NO_RENDERDOC");
+  if (!renderdoc_api_ && !(no_renderdoc && *no_renderdoc == '1')) {
     renderdoc_api_ = rex::ui::RenderDocAPI::CreateIfConnected();
     if (renderdoc_api_ && renderdoc_api_->api_1_0_0()) {
       // This template overrides renderdoccmd's --capture-file, so run.sh

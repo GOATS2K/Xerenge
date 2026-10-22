@@ -216,6 +216,8 @@ const std::vector<Setting>& Settings() {
     s.push_back({30, kDebug, "DEBUG LOGS", "debug", OffOn(), 0});
     s.push_back({31, kDebug, "POWER MODE", "power_mode", {{"STOCK", "stock"}, {"PERFORMANCE", "performance"}}, 0});
     s.push_back({32, kDebug, "FRAME COUNTER", "fps_counter", OffOn(), 0});
+    // RenderDoc's overlay ("Capturing Vulkan") where it is installed, F12 captures.
+    s.push_back({33, kDebug, "RENDERDOC", "renderdoc", OffOn(), 1});
     return s;
   }();
   return settings;
