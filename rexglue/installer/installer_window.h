@@ -106,6 +106,7 @@ class InstallerWindow : public QWidget {
   // conf only, kept by an update.
   QString spin_lead_ms_ = "8";
   QCheckBox* fps_box_ = nullptr;
+  QCheckBox* portable_box_ = nullptr;
   QCheckBox* fps30_box_ = nullptr;
   QCheckBox* framegen_box_ = nullptr;
   QCheckBox* crash_interp_box_ = nullptr;

@@ -338,6 +338,11 @@ InstallerWindow::InstallerWindow(QWidget* parent) : QWidget(parent) {
   debug_box_->setToolTip(tr("Detailed logs, for reporting a problem. What is logged is set by the "
                             "debug_* lines in xerenge.conf."));
   layout->addWidget(debug_box_);
+  portable_box_ = new QCheckBox(tr("Portable"));
+  portable_box_->setToolTip(tr("The saves, the caches and the logs in the game's folder too (userdata, cache, "
+                               "logs), so the game moves as a whole - an SD card from one machine to "
+                               "another. Off, they go to your user profile."));
+  layout->addWidget(portable_box_);
 
   // Where the launcher writes burnout.log and launcher.log; empty keeps the
   // platform default (SETUP.md has it per platform).
@@ -821,6 +826,7 @@ void InstallerWindow::LoadSettings(const QString& path) {
     spin_lead_ms_ = values.value("spin_lead_ms");
   }
   flag("fps_counter", fps_box_);
+  flag("portable", portable_box_);
   flag("fps_30", fps30_box_);
   flag("frame_generation", framegen_box_);
   flag("crash_interpolation", crash_interp_box_);
@@ -934,8 +940,9 @@ void InstallerWindow::StartInstall() {
         << "fps_30 = " << (fps30_box_->isChecked() ? "true" : "false") << "\n"
         << "frame_generation = " << (framegen_box_->isChecked() ? "true" : "false") << "\n"
         << "crash_interpolation = " << (crash_interp_box_->isChecked() ? "true" : "false") << "\n"
-        << "# portable = true: the saves, the caches and the logs in this folder too (userdata,\n"
-        << "# cache, logs), so the game moves as a whole, e.g. on an SD card\n"        << "# The keyboard as a pad, and a key (or several, comma separated) per control\n"
+        << "# The saves, the caches and the logs in this folder too (userdata, cache, logs)\n"
+        << "portable = " << (portable_box_->isChecked() ? "true" : "false") << "\n"
+        << "# The keyboard as a pad, and a key (or several, comma separated) per control\n"
         << "keyboard = " << (keyboard_box_->isChecked() ? "true" : "false") << "\n";
     for (const auto& [setting, edit] : key_edits_) {
       out << setting << " = " << edit->text().trimmed() << "\n";
