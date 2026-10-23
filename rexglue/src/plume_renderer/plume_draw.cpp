@@ -1229,9 +1229,11 @@ constexpr uint32_t kFloatsPerVert = kVertexStrideBytes / 4;
 // vector normalized with vrsqrtefp), so the console's behaviour is emulated: every primitive touching a vertex with a
 // non-finite or absurd position is collapsed to one point, which has no area and draws nothing. The vertices are
 // already one per index here, so primitives are consecutive. Returns how many vertices were bad.
+// Absurd: beyond 1e7. The game's own coordinates stay within tens of thousands; Crash mode's debris made
+// values between 1e7 and 1e12 too, which got through and were drawn as spikes on a Mali tablet (GitHub #32).
 bool BadPosition(const float* p) {
   for (int i = 0; i < 4; ++i) {
-    if (!std::isfinite(p[i]) || std::fabs(p[i]) > 1.0e12f) {
+    if (!std::isfinite(p[i]) || std::fabs(p[i]) > 1.0e7f) {
       return true;
     }
   }
