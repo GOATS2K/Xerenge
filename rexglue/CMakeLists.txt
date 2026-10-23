@@ -272,6 +272,13 @@ rexglue_setup_target(burnout GPU_PLUGINS xenos plume)
 # framework has to name it itself.
 target_include_directories(burnout PRIVATE "${REXSDK_DIR}/thirdparty/imgui")
 
+# The release and the commit the game was built from, for its log's first lines.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" XERENGE_VERSION LIMIT_COUNT 1)
+execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                OUTPUT_VARIABLE XERENGE_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+target_compile_definitions(burnout PRIVATE XERENGE_VERSION="${XERENGE_VERSION}"
+                                           XERENGE_COMMIT="${XERENGE_COMMIT}")
+
 # The achievement notice's font (achievement_toast.cpp), Roboto Medium (Apache
 # 2.0) from imgui's fonts, as bytes in the game: one file on every system.
 set(TOAST_FONT "${REXSDK_DIR}/thirdparty/imgui/misc/fonts/Roboto-Medium.ttf")

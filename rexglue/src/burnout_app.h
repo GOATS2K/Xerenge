@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <rex/logging.h>
 #include <rex/rex_app.h>
 
 #include "online_lobby.h"
@@ -23,6 +24,9 @@ class BurnoutApp : public rex::ReXApp {
   }
 
   void OnPreSetup(rex::RuntimeConfig&) override { xerenge::settings::ApplyAtStart(); }
+
+  // Which build this is, first in the log: a report then says it by itself.
+  void OnPostInitLogging() override { REXLOG_INFO("Xerenge {} ({})", XERENGE_VERSION, XERENGE_COMMIT); }
 
   void OnPostSetup() override {
     XerengeAchievementToastStart();
