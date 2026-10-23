@@ -17,12 +17,14 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <map>
 #include <string>
 
 #include <rex/hook.h>
+#include <rex/input/input_system.h>
 #include <rex/logging.h>
 #include <rex/memory.h>
 #include <rex/ppc.h>
@@ -303,6 +305,56 @@ void ShowAchievementPopup(PPCContext& ctx, uint8_t* base, int index) {
   ctx = saved;
 }
 
+// B on the main menu, where the game takes no B: a popup asking whether to quit
+// the game; Yes (A) ends it, as a restart does, No (B) stays. The pad as the
+// game will read it, at each frame of the interface, for B as it goes down.
+bool g_on_main_menu = false;
+bool g_quit_popup_open = false;
+
+void QuitAnswer(PPCContext& ctx, uint8_t*) {
+  g_quit_popup_open = false;
+  REXLOG_INFO("menu: quit popup answered with button {}", ctx.r3.u32);
+  if (ctx.r3.u32 == 2) {  // Yes, A, in a YesNo popup
+    std::_Exit(0);
+  }
+}
+
+void CheckQuitButton(PPCContext& ctx, uint8_t* base) {
+  static bool was_down = false;
+  auto* kernel_state = REX_KERNEL_STATE();
+  auto* input = kernel_state ? static_cast<rex::input::InputSystem*>(kernel_state->emulator()->input_system()) : nullptr;
+  rex::input::X_INPUT_STATE state{};
+  const bool down = input && input->GetState(0, &state) == 0 && (uint16_t(state.gamepad.buttons) & 0x2000);
+  const bool pressed = down && !was_down;
+  was_down = down;
+  if (!pressed || !g_on_main_menu || g_quit_popup_open) {
+    return;
+  }
+  static uint32_t answer = 0, message = 0;
+  if (!answer) {
+    answer = rex::Runtime::instance()->function_dispatcher()->AllocateThunk(&QuitAnswer, 0);
+    message = GuestCString(base, "$XerengeQuit");
+  }
+  if (!answer) {
+    return;
+  }
+  g_quit_popup_open = true;
+  const PPCContext saved = ctx;
+  StoreU32(base, ctx.r1.u32 + 84, 0);
+  StoreU32(base, ctx.r1.u32 + 92, 0);
+  ctx.r3.u64 = LoadU32(base, kPopupService);
+  ctx.r4.u64 = kEmptyTitle;
+  ctx.r5.u64 = message;
+  ctx.r6.u64 = kPopupButtons;
+  ctx.r7.u64 = answer;
+  ctx.r8.u64 = 0;
+  ctx.r9.u64 = 12;
+  ctx.r10.u64 = 0;
+  REXLOG_INFO("menu: quit popup asked for");
+  sub_821E6928(ctx, base);
+  ctx = saved;
+}
+
 }  // namespace
 
 REX_HOOK_RAW(sub_821EC580) {
@@ -366,6 +418,7 @@ REX_HOOK_RAW(sub_821E6BA8) {
     static std::string on_show;
     const std::string next = GuestString(base, requested);
     g_on_settings = IsSettings(next);
+    g_on_main_menu = next.size() >= 14 && next.compare(next.size() - 14, 14, "/Main/MainMenu") == 0;
     constexpr uint32_t kMusic = 0x8268748C;  // the soundtrack's state; +780: paused for a video
     const bool left_video = on_show.size() > 5 && on_show.compare(on_show.size() - 5, 5, "Video") == 0 &&
                             next != on_show;
@@ -403,6 +456,8 @@ REX_HOOK_RAW(sub_8210FCF8) {
   } kTexts[] = {
       {"XerengeRestart", "Some settings take effect after a restart. Restart the game now?"},
       {"XerengeInfo", "Info"},  // the achievements' list: A opens one's popup
+      {"XerengeQuit", "Quit the game?"},  // B on the main menu
+      {"XerengeQuitHint", "Quit"},  // its hint, beside Continue
   };
   static uint32_t guest[std::size(kTexts)] = {};
   const char* key = reinterpret_cast<const char*>(xerenge::GuestPointer(base, ctx.r4.u32));
@@ -459,6 +514,7 @@ REX_HOOK_RAW(sub_821DF3A8) {
 // interpreter again within itself and stops the game; from here it does not.
 extern "C" void __imp__sub_821FF308(PPCContext& __restrict, uint8_t*);
 REX_HOOK_RAW(sub_821FF308) {
+  CheckQuitButton(ctx, base);
   if (g_popup_pending) {
     g_popup_pending = false;
     ShowRestartPopup(ctx, base);

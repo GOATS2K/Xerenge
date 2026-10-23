@@ -1312,6 +1312,60 @@ bool RebuildAchievements(const uint8_t* data, size_t data_size, const uint8_t* c
   return true;
 }
 
+// The main menu's button hints (b4IconOptionDisplay, at 591.1, 418.05): Quit B
+// beside Continue A, B opening the quit popup (xerenge_menu.cpp) - their load
+// code ours, as the game's sets Continue alone.
+bool RebuildMainMenu(const uint8_t* data, size_t data_size, const uint8_t* constants,
+                     size_t constants_size, Blob& out_data, Blob& out_constants) {
+  Constants c;
+  if (!c.Read(constants, constants_size)) {
+    return false;
+  }
+  Blob& b = out_data;
+  b.bytes.assign(data, data + data_size);
+  const uint32_t root = c.root;
+  if (b.U32(root) != 9 || b.U32(root + 4) != 0x09876543) {
+    return false;
+  }
+  b.Align(16);
+  const uint32_t frame = b.U32(root + 12);
+  const uint32_t item_count = b.U32(frame), item_list = b.U32(frame + 4);
+  Code code(b);
+  bool done = false;
+  for (uint32_t i = 0; i < item_count; ++i) {
+    const uint32_t item = b.U32(item_list + i * 4);
+    if (b.U32(item) != 3 || !(b.U32(item + 4) & 0x80) || !b.U32(item + 60) ||
+        b.U32(item + 32) != FloatBits(591.1f) || b.U32(item + 36) != FloatBits(418.05f)) {
+      continue;
+    }
+    const uint32_t hints = code.Start();
+    for (const auto& [name, values] :
+         {std::pair<const char*, std::vector<const char*>>{"displayOptions", {"$XerengeQuitHint", "$Continue"}},
+          std::pair<const char*, std::vector<const char*>>{"XBoxIcons", {"B-Button", "A-Button"}}}) {
+      code.Push({c.String(name), c.Int(0)});
+      code.Op(0x42);  // InitArray
+      code.Op(0x1D);  // SetVariable
+      for (size_t v = 0; v < values.size(); ++v) {
+        code.Push({c.String(name)});
+        code.Op(0x1C);
+        code.Push({c.Int(int32_t(v)), c.String(values[v])});
+        code.Op(0x4F);  // SetMember
+      }
+    }
+    code.Op(0x00);
+    code.Finish();
+    b.Set32(b.U32(b.U32(item + 60) + 4) + 8, hints);
+    done = true;
+  }
+  if (!done) {
+    REXLOG_WARN("menu: main menu movie: no button hints at 591.1, 418.05");
+    return false;
+  }
+  b.Align(16);
+  out_constants = c.Write();
+  return true;
+}
+
 // The constant file's size: up to the end of its last string.
 size_t ConstantsSize(const uint8_t* raw) {
   Blob header;
@@ -1346,6 +1400,17 @@ REX_HOOK_RAW(sub_824277A0) {
     // Driver Details > Settings, or the race's pause menu's Options.
     const bool settings = Holds(raw_data, data_size, "__Packages.DriverDetailsSettingsClass");
     const bool pause = !settings && Holds(raw_data, data_size, "__Packages.PauseOptionsMenu");
+    // The main menu: Quit B beside Continue A.
+    if (!settings && !pause && Holds(raw_data, data_size, "__Packages.MainMenu")) {
+      const uint8_t* raw_constants = xerenge::GuestPointer(base, constants);
+      Blob new_data, new_constants;
+      if (RebuildMainMenu(raw_data, data_size, raw_constants, ConstantsSize(raw_constants), new_data,
+                          new_constants)) {
+        ctx.r4.u64 = ToGuest(base, new_data);
+        ctx.r5.u64 = ToGuest(base, new_constants);
+        REXLOG_INFO("menu: main menu movie rebuilt");
+      }
+    }
     // Driver Details > Stats's movie, asked for by that button: the achievements.
     if (!settings && !pause && xerenge::settings::CurrentPage() == xerenge::settings::kAchievements &&
         Holds(raw_data, data_size, "__Packages.DriverDetailsStats")) {
