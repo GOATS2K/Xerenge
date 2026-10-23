@@ -234,16 +234,27 @@ QStringList FilesUnder(const QString& from) {
   return files;
 }
 
+// Why the last WriteText failed, as the system put it.
+QString g_write_error;
+
 // Through a file beside it renamed over it: the game, which writes what its
 // menu changes into xerenge.conf, never reads half of one.
 bool WriteText(const QString& path, const QString& text, bool executable) {
+  // Written beside it and put in its place, so a cut-off write leaves the old
+  // file; where that cannot be done - the file open elsewhere or read-only, a
+  // file system without the replacing rename (GitHub #41) - written in place.
   QSaveFile file(path);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    return false;
-  }
-  file.write(text.toUtf8());
-  if (!file.commit()) {
-    return false;
+  bool written = file.open(QIODevice::WriteOnly | QIODevice::Text) && file.write(text.toUtf8()) >= 0 && file.commit();
+  if (!written) {
+    g_write_error = file.errorString();
+    QFile::setPermissions(path, QFile::permissions(path) | QFileDevice::WriteOwner | QFileDevice::WriteUser);
+    QFile direct(path);
+    written = direct.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text) &&
+              direct.write(text.toUtf8()) == qint64(text.toUtf8().size());
+    if (!written) {
+      g_write_error = direct.errorString();
+      return false;
+    }
   }
   if (executable) {
     QFile::setPermissions(path, QFile::permissions(path) | QFileDevice::ExeOwner |
@@ -1250,7 +1261,7 @@ QString InstallerWindow::WriteSettings() const {
     settings += "# Kept as they were: set in the game's menu, or by hand\n" + kept;
   }
   if (!WriteText(install.filePath("xerenge.conf"), settings, false)) {
-    return tr("cannot write %1").arg(install.filePath("xerenge.conf"));
+    return tr("cannot write %1 (%2)").arg(install.filePath("xerenge.conf"), g_write_error);
   }
   QFile::remove(install.filePath(kOldLauncher));
   if (const QString error = CopyFile(QDir(payload_dir_).filePath(kLauncherExe), install.filePath(kLauncherExe));
