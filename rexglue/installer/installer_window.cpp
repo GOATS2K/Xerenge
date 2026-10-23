@@ -934,7 +934,8 @@ void InstallerWindow::StartInstall() {
         << "fps_30 = " << (fps30_box_->isChecked() ? "true" : "false") << "\n"
         << "frame_generation = " << (framegen_box_->isChecked() ? "true" : "false") << "\n"
         << "crash_interpolation = " << (crash_interp_box_->isChecked() ? "true" : "false") << "\n"
-        << "# The keyboard as a pad, and a key (or several, comma separated) per control\n"
+        << "# portable = true: the saves, the caches and the logs in this folder too (userdata,\n"
+        << "# cache, logs), so the game moves as a whole, e.g. on an SD card\n"        << "# The keyboard as a pad, and a key (or several, comma separated) per control\n"
         << "keyboard = " << (keyboard_box_->isChecked() ? "true" : "false") << "\n";
     for (const auto& [setting, edit] : key_edits_) {
       out << setting << " = " << edit->text().trimmed() << "\n";

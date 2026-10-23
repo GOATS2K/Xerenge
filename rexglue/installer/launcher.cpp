@@ -240,6 +240,12 @@ std::vector<std::string> Prepare(const std::filesystem::path& dir, const Config&
   const char* library_path = std::getenv("LD_LIBRARY_PATH");
   Env("LD_LIBRARY_PATH", (dir / "bin").string() + (library_path && *library_path ? std::string(":") + library_path : ""));
 #endif
+  // Portable (GitHub #42): the saves, the caches and the logs in the game's own
+  // folder too, so it moves as a whole - an SD card from one machine to another.
+  const bool portable = conf.Is("portable", "true");
+  if (portable) {
+    logs = dir / "logs";
+  }
   if (conf.Has("log_path")) {
     logs = conf.Get("log_path");
   }
@@ -258,6 +264,9 @@ std::vector<std::string> Prepare(const std::filesystem::path& dir, const Config&
 #if defined(_WIN32)
   args[0] += ".exe";
 #endif
+  if (portable) {
+    args.insert(args.end(), {"--user_data_root", (dir / "userdata").string(), "--cache_root", (dir / "cache").string()});
+  }
 
   // Fullscreen unless windowed; the keyboard as a pad with its keybind_* lines.
   args.push_back(conf.Is("windowed", "true") ? "--no-fullscreen" : "--fullscreen");
