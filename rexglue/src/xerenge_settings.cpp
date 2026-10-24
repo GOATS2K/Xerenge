@@ -224,7 +224,7 @@ const std::vector<Setting>& Settings() {
     // The button icons: the game's own (the Xbox 360 pad's), or the PlayStation
     // set (plume_prompts.cpp).
     s.push_back({34, kDebug, "BUTTON ICONS", "prompts",
-                 {{"XBOX", "stock"}, {"PLAYSTATION", "playstation"}}, 0});
+                 {{"XBOX", "xbox"}, {"PLAYSTATION", "playstation"}}, 0});
     return s;
   }();
   return settings;

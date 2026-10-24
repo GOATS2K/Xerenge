@@ -55,7 +55,7 @@
 #                       127.0.0.2 and 127.0.0.3 run two copies on one machine.
 #   ./run.sh --windowed runs in a window; --fullscreen (the default) does not.
 #   ./run.sh --fps      frames per second in the top left corner (plume).
-#   ./run.sh --prompts=playstation  the button icons of another controller (assets/input_prompts/replace/<set>/); stock: the game's own. Also BUTTON ICONS in Settings > DEBUG.
+#   ./run.sh --prompts=playstation  the PlayStation button icons (assets/input_prompts/replace/playstation/); xbox or stock: the game's own. Also BUTTON ICONS in Settings > DEBUG.
 #   ./run.sh --power=MODE
 #                       how the title's thread waits for the next frame (plume):
 #                       stock (the default) sleeps, which lets the CPU clock
