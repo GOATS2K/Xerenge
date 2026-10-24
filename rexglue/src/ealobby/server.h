@@ -123,6 +123,17 @@ class Server {
   std::map<uint32_t, RemoteGame> remote_games_;
   std::map<std::string, SocketHandle> links_;  // by the host server's address
   SocketHandle beacon_ = -1;
+  // NAT traversal (server.cpp, kNatPrefix): the players' game sockets as their routers map them,
+  // by address << 16 | the port each is bound to.
+  struct NatMapping {
+    uint32_t address = 0;  // as on the wire
+    uint16_t port = 0;     // as on the wire
+    std::chrono::steady_clock::time_point seen;
+  };
+  bool OpenRendezvous();
+  void ReceiveRendezvous();
+  std::map<uint64_t, NatMapping> nat_;
+  SocketHandle rendezvous_ = -1;
   SocketHandle next_virtual_ = -2;
   uint32_t game_tag_ = 0;  // the server's part of a game id, so ids differ between servers
   std::chrono::steady_clock::time_point next_announce_ = std::chrono::steady_clock::now();

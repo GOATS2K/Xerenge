@@ -240,6 +240,28 @@ constexpr char kGameBeacon[] = "XERENGE-GAME 1 ";
 constexpr uint32_t kBeaconGroup = 0xEFFF4D4Du;  // 239.255.77.77
 constexpr auto kRemoteGameLifetime = std::chrono::seconds(4);
 
+// NAT traversal (GitHub #49): a player's game sockets register with the server
+// over UDP on the directory port - "XNAT1 REG <port>", the port the socket is
+// bound to - and the server keeps the address and port it came from: where
+// the player's router maps that socket. "XNAT1 ASK <own port> <ip> <port>"
+// asks for another player's socket; the answer is "XNAT1 ANS <ip> <port>
+// <mapped ip> <mapped port>", and the other player is told "XNAT1 MEET ..."
+// about the asker the same way, so both send at once and each router lets the
+// other's packets in.
+constexpr char kNatPrefix[] = "XNAT1 ";
+constexpr auto kNatLifetime = std::chrono::seconds(90);
+
+// A private, loopback or link-local IPv4 address (dotted): one only its own
+// network reaches.
+bool IsLocalAddress(const std::string& address) {
+  unsigned a = 0, b = 0, c = 0, d = 0;
+  if (std::sscanf(address.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
+    return true;
+  }
+  return a == 10 || a == 127 || a == 0 || (a == 172 && b >= 16 && b < 32) || (a == 192 && b == 168) ||
+         (a == 169 && b == 254) || (a == 100 && b >= 64 && b < 128);
+}
+
 }  // namespace
 
 Server::Server(Options options, LogFunction log) : options_(std::move(options)), log_(std::move(log)) {}
@@ -327,6 +349,10 @@ bool Server::Start() {
       Log("ealobby: no beacon socket; games on other servers will not be found");
     }
   }
+  if (!OpenRendezvous()) {
+    Log("ealobby: no UDP socket on port " + std::to_string(options_.directory_port) +
+        "; players behind routers will not reach each other");
+  }
   SetNonBlocking(ToNative(wake_[0]));
   running_ = true;
   thread_ = std::thread([this] { Run(); });
@@ -353,7 +379,7 @@ void Server::Stop() {
     }
   }
   connections_.clear();
-  for (SocketHandle* fd : {&directory_listener_, &lobby_listener_, &locker_listener_, &beacon_, &wake_[0], &wake_[1]}) {
+  for (SocketHandle* fd : {&directory_listener_, &lobby_listener_, &locker_listener_, &beacon_, &rendezvous_, &wake_[0], &wake_[1]}) {
     if (*fd >= 0) {
       CloseNative(ToNative(*fd));
       *fd = -1;
@@ -369,6 +395,7 @@ void Server::Run() {
     fds.push_back(MakePollFd(lobby_listener_, POLLIN));
     fds.push_back(MakePollFd(beacon_, POLLIN));
     fds.push_back(MakePollFd(locker_listener_, POLLIN));
+    fds.push_back(MakePollFd(rendezvous_, POLLIN));
     for (auto& [fd, connection] : connections_) {
       if (connection->role == Role::kRemote) {
         continue;
@@ -396,8 +423,11 @@ void Server::Run() {
     if (locker_listener_ >= 0 && (fds[4].revents & POLLIN)) {
       Accept(locker_listener_, Role::kHttp);
     }
+    if (rendezvous_ >= 0 && (fds[5].revents & POLLIN)) {
+      ReceiveRendezvous();
+    }
     std::vector<SocketHandle> closed;
-    for (size_t i = 5; i < fds.size(); ++i) {
+    for (size_t i = 6; i < fds.size(); ++i) {
       auto found = connections_.find(static_cast<SocketHandle>(fds[i].fd));
       if (found == connections_.end()) {
         continue;
@@ -1191,8 +1221,16 @@ Fields Server::GameRecord(const Game& game, const Connection& to) const {
     // The game finds a remote player in its manager by the id ConnApi gave it.
     record["OPID" + n] = std::to_string(PlayerId(player->user));
     record["OPPO" + n] = player->user;
-    record["ADDR" + n] = address(*player);
-    record["LADDR" + n] = address(*player);
+    // ADDR: where the others reach it. The address it gives for itself is its
+    // own network's (192.168...); one that comes from the internet is reached
+    // at the address it came from - its router's - except by a player behind
+    // the same router (GitHub #49).
+    const std::string own = address(*player);
+    const std::string seen = player->peer.substr(0, player->peer.find(':'));
+    const std::string seen_to = to.peer.substr(0, to.peer.find(':'));
+    const bool across = player->role == Role::kLobby && !IsLocalAddress(seen) && seen != seen_to;
+    record["ADDR" + n] = across ? seen : own;
+    record["LADDR" + n] = record["ADDR" + n];  // which of the two the title picks is not known
     record["MADDR" + n] = player->maddr;
     record["OPPART" + n] = "0";
     record["OPPARAM" + n] = player->user_params;
@@ -1613,6 +1651,96 @@ void Server::HandlePeer(Connection& link, const Message& message) {
         return;
       }
     }
+  }
+}
+
+bool Server::OpenRendezvous() {
+  const NativeSocket s = socket(AF_INET, SOCK_DGRAM, 0);
+  if (s == kInvalidNativeSocket) {
+    return false;
+  }
+  sockaddr_in at = {};
+  at.sin_family = AF_INET;
+  at.sin_port = htons(options_.directory_port);
+  if (inet_pton(AF_INET, options_.host.c_str(), &at.sin_addr) != 1 ||
+      bind(s, reinterpret_cast<sockaddr*>(&at), sizeof(at)) != 0) {
+    CloseNative(s);
+    return false;
+  }
+  SetNonBlocking(s);
+  rendezvous_ = FromNative(s);
+  return true;
+}
+
+void Server::ReceiveRendezvous() {
+  const auto now = std::chrono::steady_clock::now();
+  const auto dotted = [](uint32_t address) {
+    char text[INET_ADDRSTRLEN] = {};
+    in_addr in = {};
+    in.s_addr = address;
+    inet_ntop(AF_INET, &in, text, sizeof(text));
+    return std::string(text);
+  };
+  const auto key = [](uint32_t address, uint16_t port) { return uint64_t(ntohl(address)) << 16 | ntohs(port); };
+  const auto send_to = [this](const std::string& text, uint32_t address, uint16_t port) {
+    sockaddr_in to = {};
+    to.sin_family = AF_INET;
+    to.sin_addr.s_addr = address;
+    to.sin_port = port;
+    sendto(ToNative(rendezvous_), text.data(), static_cast<int>(text.size()), 0, reinterpret_cast<sockaddr*>(&to),
+           sizeof(to));
+  };
+  for (;;) {
+    char in[256];
+    sockaddr_in from = {};
+    SockLen from_length = sizeof(from);
+    const auto got =
+        recvfrom(ToNative(rendezvous_), in, sizeof(in) - 1, 0, reinterpret_cast<sockaddr*>(&from), &from_length);
+    if (got <= 0) {
+      break;
+    }
+    in[got] = '\0';
+    const size_t prefix = sizeof(kNatPrefix) - 1;
+    if (static_cast<size_t>(got) <= prefix || std::memcmp(in, kNatPrefix, prefix) != 0) {
+      continue;
+    }
+    char verb[8] = {}, target[INET_ADDRSTRLEN] = {};
+    unsigned own_port = 0, target_port = 0;
+    const int fields = std::sscanf(in + prefix, "%7s %u %15s %u", verb, &own_port, target, &target_port);
+    if (fields < 2 || own_port == 0 || own_port > 0xFFFF) {
+      continue;
+    }
+    // The socket that sent it, as its router maps it.
+    NatMapping& self = nat_[key(from.sin_addr.s_addr, htons(uint16_t(own_port)))];
+    const bool fresh = self.port != from.sin_port || self.address != from.sin_addr.s_addr;
+    self.address = from.sin_addr.s_addr;
+    self.port = from.sin_port;
+    self.seen = now;
+    if (fresh) {
+      Log("ealobby: NAT - " + dotted(from.sin_addr.s_addr) + " port " + std::to_string(own_port) +
+          " is mapped to port " + std::to_string(ntohs(from.sin_port)));
+    }
+    if (std::strcmp(verb, "ASK") != 0 || fields != 4 || target_port == 0 || target_port > 0xFFFF) {
+      continue;
+    }
+    in_addr target_address = {};
+    if (inet_pton(AF_INET, target, &target_address) != 1) {
+      continue;
+    }
+    const auto found = nat_.find(key(target_address.s_addr, htons(uint16_t(target_port))));
+    if (found == nat_.end()) {
+      continue;
+    }
+    const NatMapping& peer = found->second;
+    send_to(std::string(kNatPrefix) + "ANS " + target + " " + std::to_string(target_port) + " " +
+                dotted(peer.address) + " " + std::to_string(ntohs(peer.port)),
+            from.sin_addr.s_addr, from.sin_port);
+    send_to(std::string(kNatPrefix) + "MEET " + dotted(from.sin_addr.s_addr) + " " + std::to_string(own_port) +
+                " " + dotted(from.sin_addr.s_addr) + " " + std::to_string(ntohs(from.sin_port)),
+            peer.address, peer.port);
+  }
+  for (auto it = nat_.begin(); it != nat_.end();) {
+    it = now - it->second.seen > kNatLifetime ? nat_.erase(it) : std::next(it);
   }
 }
 
