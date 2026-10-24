@@ -221,6 +221,9 @@ const std::vector<Setting>& Settings() {
     s.push_back({32, kDebug, "FRAME COUNTER", "fps_counter", OffOn(), 0});
     // RenderDoc's overlay ("Capturing Vulkan") where it is installed, F12 captures.
     s.push_back({33, kDebug, "RENDERDOC", "renderdoc", OffOn(), 1});
+    // The button icons: the game's, or another controller's (plume_prompts.cpp).
+    s.push_back({34, kDebug, "BUTTON ICONS", "prompts",
+                 {{"STOCK", "stock"}, {"PLAYSTATION", "playstation"}, {"XBOX", "xbox"}}, 0});
     return s;
   }();
   return settings;
@@ -414,6 +417,17 @@ void ApplyAtStart() {
     _putenv_s("XERENGE_NO_RENDERDOC", "1");
 #else
     setenv("XERENGE_NO_RENDERDOC", "1", 1);
+#endif
+  }
+  // The button icons, unless the command line chose them (run.sh --prompts=,
+  // which also sets XERENGE_PROMPTS_ARG): the conf wins over what a restart
+  // inherited from the copy before.
+  const std::string prompts = ConfValue("prompts", "");
+  if (!prompts.empty() && !std::getenv("XERENGE_PROMPTS_ARG")) {
+#if defined(_WIN32)
+    _putenv_s("XERENGE_PROMPTS", prompts.c_str());
+#else
+    setenv("XERENGE_PROMPTS", prompts.c_str(), 1);
 #endif
   }
 }

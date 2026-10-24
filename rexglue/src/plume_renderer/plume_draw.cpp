@@ -14,6 +14,7 @@
  * @brief       Guest DRAW_INDX_2 → plume graphics pipeline (present thread).
  */
 #include "plume_renderer/plume_draw.h"
+#include "plume_renderer/plume_prompts.h"
 #include "plume_renderer/plume_etc2_cache.h"
 #include "plume_renderer/plume_postfx.h"
 #include "diagnostics.h"
@@ -6660,13 +6661,24 @@ void PlumeDrawContext::BindGuestTextures(plume::RenderCommandList* list,
           continue;
         }
       }
+      // The game's button icons, another controller's in their place when one
+      // is chosen (XERENGE_PROMPTS): plain RGBA whatever the game's were (the
+      // race's are DXT), and without the game's mips, which are its own.
+      if (std::vector<uint8_t> prompts; PromptAtlasFor(content, width, height, &prompts)) {
+        pixels = std::move(prompts);
+        row_bytes = width * 4;
+        row_texels = width;
+        host_format = plume::RenderFormat::R8G8B8A8_UNORM;
+        expand_r8 = false;
+        mip_src = nullptr;
+      }
 
       bool dumped_now = false;
       static uint32_t dump_count = 0;
-      static std::vector<uint32_t> dumped_addrs;
+      static std::vector<uint64_t> dumped_addrs;  // address and content: an address is reused
       static const bool dump_enabled = std::getenv("XERENGE_DUMP_TEXTURES") != nullptr;
       // XERENGE_DUMP_TEXTURES=<hex>,<hex>...: only textures at these physical
-      // addresses (as the queue dump prints them); any other value, the first 256.
+      // addresses (as the queue dump prints them); any other value, the first 1024.
       static const std::vector<uint32_t> dump_only = [] {
         std::vector<uint32_t> addresses;
         if (const char* list = std::getenv("XERENGE_DUMP_TEXTURES")) {
@@ -6688,15 +6700,15 @@ void PlumeDrawContext::BindGuestTextures(plume::RenderCommandList* list,
           dump_only.empty() ||
           std::find(dump_only.begin(), dump_only.end(), info.memory.base_address) !=
               dump_only.end();
-      if (dump_enabled && wanted && dump_count < 256 &&
-          std::find(dumped_addrs.begin(), dumped_addrs.end(), info.memory.base_address) ==
+      if (dump_enabled && wanted && dump_count < 1024 &&
+          std::find(dumped_addrs.begin(), dumped_addrs.end(), (uint64_t(info.memory.base_address) << 32) ^ content) ==
               dumped_addrs.end()) {
-        dumped_addrs.push_back(info.memory.base_address);
+        dumped_addrs.push_back((uint64_t(info.memory.base_address) << 32) ^ content);
         dumped_now = true;
         char path[256];
-        std::snprintf(path, sizeof(path), "logs/tex_%03u_%ux%u_fmt%u_addr%08X_%s.png", dump_count,
+        std::snprintf(path, sizeof(path), "logs/tex_%03u_%ux%u_fmt%u_addr%08X_%s_%016llX.png", dump_count,
                      width, height, uint32_t(fetch.format), info.memory.base_address,
-                     expand_r8 ? "r8" : "rgba");
+                     expand_r8 ? "r8" : "rgba", (unsigned long long)content);
         std::vector<uint8_t> decoded;
         if (DecodeCompressedForDump(base_fmt, pixels, row_bytes, width, height, &decoded)) {
           DumpTextureToPng(path, decoded.data(), width, height, width * 4);

@@ -55,6 +55,7 @@
 #                       127.0.0.2 and 127.0.0.3 run two copies on one machine.
 #   ./run.sh --windowed runs in a window; --fullscreen (the default) does not.
 #   ./run.sh --fps      frames per second in the top left corner (plume).
+#   ./run.sh --prompts=playstation  the button icons of another controller (assets/input_prompts/replace/<set>/); stock: the game's own. Also BUTTON ICONS in Settings > DEBUG.
 #   ./run.sh --power=MODE
 #                       how the title's thread waits for the next frame (plume):
 #                       stock (the default) sleeps, which lets the CPU clock
@@ -216,6 +217,7 @@ for arg in "$@"; do
         --full-vertices) FULL_VERTICES=1 ;;
         --cull) CULL=1 ;;
         --fps) FPS_SHOW=1 ;;
+        --prompts=*) XERENGE_PROMPTS="${arg#--prompts=}"; XERENGE_PROMPTS_ARG=1; export XERENGE_PROMPTS XERENGE_PROMPTS_ARG ;;
         --power=*) POWER_MODE=${arg#*=} ;;
         --windowed) WINDOWED=1 ;;
         --fullscreen) WINDOWED= ;;

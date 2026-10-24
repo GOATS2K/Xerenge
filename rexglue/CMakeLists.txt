@@ -206,7 +206,31 @@ target_include_directories(rexgpu-plume PRIVATE
     # SearchTex.h) for plume_postfx.cpp. The shader, SMAA.hlsl, is compiled
     # ahead of time with smaa.frag (plume_postfx_spirv.h).
     "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/smaa"
+    # stb_image, for the button atlases below.
+    "${REXSDK_DIR}/thirdparty/stb"
 )
+# The button icons of other controllers (assets/input_prompts/replace/<set>/
+# <hash>.png: a picture for the game's texture of that content hash, of its
+# size), as bytes in the plugin: plume_prompts.cpp puts the chosen set's in place.
+set(PROMPT_ATLAS_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/prompt_atlases.cpp")
+file(GLOB PROMPT_ATLASES "${CMAKE_CURRENT_SOURCE_DIR}/assets/input_prompts/replace/*/*.png")
+set(prompt_atlas_source "#include <cstddef>\n#include <cstdint>\nstruct PromptAtlas { const char* set; uint64_t hash; const unsigned char* png; size_t size; };\n")
+set(prompt_atlas_table "")
+set(prompt_atlas_index 0)
+foreach(atlas IN LISTS PROMPT_ATLASES)
+    get_filename_component(atlas_hash "${atlas}" NAME_WE)
+    get_filename_component(atlas_dir "${atlas}" DIRECTORY)
+    get_filename_component(atlas_set "${atlas_dir}" NAME)
+    file(READ "${atlas}" atlas_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," atlas_bytes "${atlas_hex}")
+    string(APPEND prompt_atlas_source "static const unsigned char k_${prompt_atlas_index}[] = {${atlas_bytes}};\n")
+    string(APPEND prompt_atlas_table "{\"${atlas_set}\", 0x${atlas_hash}ull, k_${prompt_atlas_index}, sizeof(k_${prompt_atlas_index})},")
+    math(EXPR prompt_atlas_index "${prompt_atlas_index} + 1")
+endforeach()
+string(APPEND prompt_atlas_source "extern const PromptAtlas kPromptAtlases[] = {${prompt_atlas_table}{nullptr, 0, nullptr, 0}};\n")
+file(WRITE "${PROMPT_ATLAS_CPP}" "${prompt_atlas_source}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROMPT_ATLASES})
+target_sources(rexgpu-plume PRIVATE src/plume_renderer/plume_prompts.cpp "${PROMPT_ATLAS_CPP}")
 if(NOT TARGET xxHash::xxhash)
     add_subdirectory("${XENON_RECOMP_ROOT}/thirdparty/xxHash/cmake_unofficial" xenos-xxhash)
 endif()
