@@ -221,9 +221,10 @@ const std::vector<Setting>& Settings() {
     s.push_back({32, kDebug, "FRAME COUNTER", "fps_counter", OffOn(), 0});
     // RenderDoc's overlay ("Capturing Vulkan") where it is installed, F12 captures.
     s.push_back({33, kDebug, "RENDERDOC", "renderdoc", OffOn(), 1});
-    // The button icons: the game's, or another controller's (plume_prompts.cpp).
+    // The button icons: the game's own (the Xbox 360 pad's), or the PlayStation
+    // set (plume_prompts.cpp).
     s.push_back({34, kDebug, "BUTTON ICONS", "prompts",
-                 {{"STOCK", "stock"}, {"PLAYSTATION", "playstation"}, {"XBOX", "xbox"}}, 0});
+                 {{"XBOX", "stock"}, {"PLAYSTATION", "playstation"}}, 0});
     return s;
   }();
   return settings;

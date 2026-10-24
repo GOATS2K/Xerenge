@@ -6,8 +6,9 @@ The PlayStation set in `../replace/playstation/` (the menu atlas
 `rsvg-convert`. The shapes, colours and stroke letters are those of
 [Takedawn](https://github.com/xenophobentx/takedawn)'s
 `assets/glyphs/playstation` (MIT, `LICENSE.takedawn`), laid out at the places
-where Burnout Revenge keeps its prompts; the right stick and the d-pad are
-drawn here in the same manner.
+where Burnout Revenge keeps its prompts; the d-pad is drawn here in the same
+manner. The right stick's place is marked (magenta at alpha 1), and the
+game's own texels stay there (plume_draw.cpp).
 
     rsvg-convert atlas.svg -o ../replace/playstation/C3E82000DB0002CD.png
     rsvg-convert race_cross.svg -o ../replace/playstation/FB913238D525726F.png

@@ -6665,6 +6665,18 @@ void PlumeDrawContext::BindGuestTextures(plume::RenderCommandList* list,
       // is chosen (XERENGE_PROMPTS): plain RGBA whatever the game's were (the
       // race's are DXT), and without the game's mips, which are its own.
       if (std::vector<uint8_t> prompts; PromptAtlasFor(content, width, height, &prompts)) {
+        // A texel of the picture left as a mark (magenta at alpha 1) keeps the
+        // game's own: the right stick stays the original's.
+        if (swizzle_bgra && row_bytes >= width * 4 && pixels.size() >= size_t(row_bytes) * height) {
+          for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+              uint8_t* to = &prompts[(size_t(y) * width + x) * 4];
+              if (to[0] == 255 && to[1] == 0 && to[2] == 255 && to[3] == 1) {
+                std::memcpy(to, &pixels[size_t(y) * row_bytes + size_t(x) * 4], 4);
+              }
+            }
+          }
+        }
         pixels = std::move(prompts);
         row_bytes = width * 4;
         row_texels = width;
