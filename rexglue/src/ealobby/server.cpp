@@ -913,10 +913,18 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     return;
   }
   if (message.command == "gqwk") {
-    // Quick match: the first open game with room, or none.
+    // Quick match: the first open game with room, or none. GS1 is the choice of
+    // Ranked (1) or Player Match (0); a ranked game's gcre has SYSFLAGS bit 18
+    // (0x40000), and only games of the kind asked for are joined (as
+    // secretpray/burnout-revenge 44688ff found).
+    const std::string ranked_wanted = field("GS1", "");
+    const auto kind_fits = [&](const std::string& sysflags) {
+      return (ranked_wanted != "0" && ranked_wanted != "1") ||
+             ((number(sysflags) & 0x40000) != 0) == (ranked_wanted == "1");
+    };
     Game* game = nullptr;
     for (auto& [id, g] : games_) {
-      if (id != connection.game && !locked(g) && std::stoi(g.maxsize.empty() ? "0" : g.maxsize) >
+      if (id != connection.game && !locked(g) && kind_fits(g.sysflags) && std::stoi(g.maxsize.empty() ? "0" : g.maxsize) >
                                        static_cast<int>(g.players.size())) {
         game = &g;
         break;
@@ -933,7 +941,7 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
           const auto it = remote.record.find(key);
           return it != remote.record.end() ? it->second : std::string();
         };
-        if ((number(field_of("SYSFLAGS")) & 0x1000) == 0 &&
+        if ((number(field_of("SYSFLAGS")) & 0x1000) == 0 && kind_fits(field_of("SYSFLAGS")) &&
             number(field_of("COUNT")) < number(field_of("MAXSIZE")) && join_remote(remote_id, remote)) {
           return;
         }
@@ -941,7 +949,10 @@ void Server::HandleLobby(Connection& connection, const Message& message) {
     }
     if (!game) {
       Log("lobby: gqwk - no open game");
-      Send(connection, Encode(message.command, Fields{}, "gjnf"));
+      // nfnd: DirtySock makes it -52 (sub_82368710), which Quick Match answers
+      // with its own "no match, create one?" dialog; gjnf came out as 0, a
+      // connection problem.
+      Send(connection, Encode(message.command, Fields{}, "nfnd"));
       return;
     }
     LeaveGame(connection);
