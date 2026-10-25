@@ -374,6 +374,19 @@ int TopBar(const Glyph& g) {
   return std::max(n, 1);
 }
 
+// The width of a glyph's ink: from its first column with any to its last.
+int InkWidth(const Glyph& g) {
+  int first = g.w, last = -1;
+  for (int x = 0; x < g.w; ++x)
+    for (int y = 0; y < g.h; ++y)
+      if (g.Alpha(x, y) > 64) {
+        first = std::min(first, x);
+        last = std::max(last, x);
+        break;
+      }
+  return last >= first ? last - first + 1 : 1;
+}
+
 int LeftStem(const Glyph& g) {
   int n = 0;
   for (int x = 0; x < g.w; ++x) {
@@ -397,7 +410,8 @@ struct Letters {
     E = m.Get(u'E');
     I = m.Get(u'I');
     cap = H.h;
-    stem = LeftStem(H);
+    // The stem's width: I's, or H's left column where the wear leaves I none.
+    stem = std::max(LeftStem(H), InkWidth(I));
     bar = TopBar(E);
   }
 
@@ -412,7 +426,8 @@ struct Letters {
   // E's top bar, w wide.
   Glyph Bar(int w) const { return Resize(Crop(E, 0, 0, E.w, bar), w, bar); }
   // A stroke of a stem, h tall.
-  Glyph Stem(int h) const { return Resize(Crop(I, (I.w - stem) / 2, 0, stem, I.h), stem, h); }
+  // (Its middle half: the ends of I may be rounded, worn or short of the box.)
+  Glyph Stem(int h) const { return Resize(Crop(I, (I.w - stem) / 2, I.h / 4, stem, I.h / 2), stem, h); }
 
   Glyph Pe() const {  // П: H without its crossbar, with a bar on top
     Glyph g = H;
@@ -475,15 +490,20 @@ struct Letters {
       case u'Л': return FlipV(m.Get(u'V'));
       case u'З': return ToCap(m.Get(u'3'));
       case u'Ч': return ToCap(Rot180(m.Get(u'h')));
-      case u'Б': {  // E's top over B's bottom
-        const Glyph b = m.Get(u'B');
-        const int mid = b.h / 2;
-        Glyph top = Crop(E, 0, 0, E.w, mid);
-        Glyph out = Crop(b, 0, mid, b.w, b.h - mid);
-        out.yoff = b.yoff;
-        out = Over(out, top, 0, -mid);
-        out.yoff = b.yoff;
-        return out;
+      case u'Б': {  // В's lower half under Г: B without its upper bowl, a bar across the top
+        Glyph b = m.Get(u'B');
+        // The middle bar: the first row near the middle that is mostly ink.
+        int middle = b.h / 2;
+        for (int y = b.h * 3 / 10; y < b.h * 7 / 10; ++y) {
+          int ink = 0;
+          for (int x = 0; x < b.w; ++x) ink += b.Alpha(x, y) > 128;
+          if (ink * 10 >= b.w * 6) {
+            middle = y;
+            break;
+          }
+        }
+        Erase(b, stem, 0, b.w - stem, middle);
+        return Over(b, Bar(b.w), 0, 0);
       }
       case u'Д': {  // П on a bar a stem wider each side, its ends going down
         Glyph p = Scale(Pe(), 0.9f, 1.0f);
@@ -510,9 +530,10 @@ struct Letters {
         return Over(i, mark, (i.w - mark.w) / 2, -(n.h - cap));
       }
       case u'П': return Pe();
-      case u'Ф': {
+      case u'Ф': {  // O with a stem through it, a little past it above and below
         Glyph o = m.Get(u'O');
-        return Over(o, Stem(o.h), (o.w - stem) / 2, 0);
+        const int past = std::max(2, cap / 10);
+        return Over(o, Stem(o.h + 2 * past), (o.w - stem) / 2, -past);
       }
       case u'Ц': {
         Glyph u = FlipV(Pe());
@@ -561,7 +582,13 @@ struct Letters {
       case u'с': return m.Get(u'c');
       case u'у': return m.Get(u'y');
       case u'х': return m.Get(u'x');
-      case u'б': return ToCap(m.Get(u'6'));
+      case u'ф': {  // a wider o on a stem from the ascenders to the descenders
+        const Glyph o = Scale(m.Get(u'o'), 1.3f, 1.0f), b = m.Get(u'b'), p = m.Get(u'p');
+        if (!o.ok || !b.ok || !p.ok) break;
+        const int rise = int(std::lround(o.yoff - b.yoff));
+        const int fall = int(std::lround((p.yoff + p.h) - (o.yoff + o.h)));
+        return Spaced(Over(o, Stem(rise + o.h + fall), (o.w - stem) / 2, -rise));
+      }
       default: break;
     }
     // The rest: the capital, as tall as x.

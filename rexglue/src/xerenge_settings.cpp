@@ -143,6 +143,12 @@ struct Setting {
 std::vector<Option> OffOn() { return {{"OFF", "false"}, {"ON", "true"}}; }
 
 bool g_single_language = false;
+bool g_restart = false;
+// Set at the start (ApplyAtStart): the game runs in English under a
+// localisation mod, so a switch between that English and a mod whose fonts it
+// loaded needs no restart; this is the English one's value ("0" or "1"), or
+// empty when the game did not start under a mod.
+std::string g_mod_english;
 
 const std::vector<Setting>& Settings() {
   static const std::vector<Setting> settings = [] {
@@ -182,12 +188,26 @@ const std::vector<Setting>& Settings() {
           // the language chosen before it (EN-GB on the European disc, the
           // American one's only language there).
           WriteConf("language", g_single_language ? "1" : "0");
+          // Its text at once, where the game already shows its fonts in English.
+          const mods::Mod* mod = &mods::Localizations()[size_t(option) - game_languages];
+          if (!g_mod_english.empty() && mods::CanShowLive(mod)) {
+            mods::SetLive(mod);
+          } else {
+            g_restart = true;
+          }
         } else {
           WriteConf("locale_mod", "");
           WriteConf("language", kValues[option]);
+          // Back to the English the game runs in: at once; another: a restart.
+          if (!g_mod_english.empty() && g_mod_english == kValues[option]) {
+            mods::SetLive(nullptr);
+          } else {
+            g_restart = true;
+          }
         }
       };
     }
+    language.restart = false;  // its set() says when one is needed
     s.push_back(language);
 
     s.push_back({10, kGraphics, "KEEP 16:9", "aspect_16_9", OffOn(), 1});
@@ -285,7 +305,6 @@ const Setting* Find(int id) {
 
 Page g_page = kMain;
 std::map<int, int> g_live;  // live settings chosen in the menus: id -> option
-bool g_restart = false;
 
 
 // The game's achievements (the disc's XDBF, as the SDK read it), in its order.
@@ -466,6 +485,7 @@ void ApplyAtStart() {
       uk = uk || Lower(entry.path().filename().string()) == "mainuk.bin";
     }
     const char* english = uk ? "0" : "1";
+    g_mod_english = english;
 #if defined(_WIN32)
     _putenv_s("XERENGE_LANGUAGE", english);
 #else

@@ -90,6 +90,10 @@ std::vector<Mod> Find() {
 
 std::mutex g_mutex;
 bool g_loaded = false;
+const Mod* g_texts_mod = nullptr;  // whose texts g_texts holds
+const Mod* g_live = nullptr;       // the mod whose text is used now
+bool g_live_set = false;
+const Mod* g_fonts_mod = nullptr;  // whose fonts the game loaded at the start
 std::unordered_map<int32_t, std::u16string> g_texts;  // by the key's hash
 std::unordered_map<int32_t, uint32_t> g_guest;        // made into guest memory, once each
 std::u16string g_chars;                               // every character the texts use
@@ -116,6 +120,9 @@ std::u16string Utf16(const std::string& utf8) {
 // KEY = text, \n a new line, \\ a backslash; 0x1234ABCD as a key is a hash.
 void LoadTexts(const Mod& mod) {
   g_loaded = true;
+  g_texts_mod = &mod;
+  g_texts.clear();
+  g_guest.clear();  // the old ones stay in guest memory: a switch of language costs a little
   const std::string file = mod.Get("Localization");
   if (file.empty()) return;
   std::ifstream in(mod.root / file, std::ios::binary);
@@ -265,6 +272,7 @@ void PrepareAtStart() {
     const std::string path = MadeFont(*mod, game_file);
     if (!path.empty()) g_made[Lower(game_file)] = path;
   }
+  if (!g_made.empty()) g_fonts_mod = mod;
 }
 
 const std::vector<Mod>& Localizations() {
@@ -285,10 +293,10 @@ const Mod* ActiveLocalization() {
 
 // The mod's text for a key, in guest memory (big-endian UTF-16); 0 for none.
 uint32_t Text(uint8_t* base, const char* key) {
-  static const Mod* mod = ActiveLocalization();
-  if (!mod) return 0;
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_loaded) LoadTexts(*mod);
+  const Mod* mod = g_live_set ? g_live : ActiveLocalization();
+  if (!mod) return 0;
+  if (!g_loaded || g_texts_mod != mod) LoadTexts(*mod);
   const int32_t hash = locale::KeyHash(key);
   const auto text = g_texts.find(hash);
   if (text == g_texts.end()) return 0;
@@ -351,3 +359,21 @@ REX_HOOK_RAW(sub_8210E1F0) {
   }
   __imp__sub_8210E1F0(ctx, base);
 }
+
+namespace xerenge::mods {
+
+void SetLive(const Mod* mod) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_live = mod;
+  g_live_set = true;
+  REXLOG_INFO("mods: text now {}", mod ? mod->folder : std::string("the game's"));
+}
+
+bool CanShowLive(const Mod* mod) {
+  if (!mod) return true;
+  const bool has_fonts = !mod->Get("FontBig").empty() || !mod->Get("FontSmall").empty() ||
+                         !mod->Get("FontBigDistressed").empty() || !mod->Get("FontDigital").empty();
+  return !has_fonts || g_fonts_mod == mod;
+}
+
+}  // namespace xerenge::mods

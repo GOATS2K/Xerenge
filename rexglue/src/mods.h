@@ -43,4 +43,10 @@ uint32_t Text(uint8_t* base, const char* key);
 // fonts made (or found made) in its .cache/.
 void PrepareAtStart();
 
+// The mod whose text is used from now on (none: the game's), chosen in the
+// menus; and whether it can be, without a restart - its fonts, if it has any,
+// must be the ones the game loaded at the start.
+void SetLive(const Mod* mod);
+bool CanShowLive(const Mod* mod);
+
 }  // namespace xerenge::mods
