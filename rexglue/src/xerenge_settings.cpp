@@ -142,6 +142,8 @@ struct Setting {
 
 std::vector<Option> OffOn() { return {{"OFF", "false"}, {"ON", "true"}}; }
 
+bool g_single_language = false;
+
 const std::vector<Setting>& Settings() {
   static const std::vector<Setting> settings = [] {
     std::vector<Setting> s;
@@ -176,6 +178,10 @@ const std::vector<Setting>& Settings() {
         static const char* const kValues[] = {"", "0", "1", "5", "10", "11", "12"};
         if (size_t(option) >= game_languages) {
           WriteConf("locale_mod", mods::Localizations()[size_t(option) - game_languages].folder);
+          // Under the mod, English: what it has not translated is English, not
+          // the language chosen before it (EN-GB on the European disc, the
+          // American one's only language there).
+          WriteConf("language", g_single_language ? "1" : "0");
         } else {
           WriteConf("locale_mod", "");
           WriteConf("language", kValues[option]);
@@ -279,7 +285,6 @@ const Setting* Find(int id) {
 
 Page g_page = kMain;
 std::map<int, int> g_live;  // live settings chosen in the menus: id -> option
-bool g_single_language = false;
 bool g_restart = false;
 
 
@@ -450,6 +455,23 @@ namespace xerenge::settings {
 
 void ApplyAtStart() {
   mods::PrepareAtStart();
+  // Under a localisation mod the game's language is English, whatever was
+  // chosen before: what the mod has not translated reads in English. The
+  // European disc's is EN-GB (0), the American's its only one (1).
+  if (mods::ActiveLocalization()) {
+    std::error_code ec;
+    const std::string root = REXCVAR_GET(game_data_root);
+    bool uk = false;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root + "/language", ec)) {
+      uk = uk || Lower(entry.path().filename().string()) == "mainuk.bin";
+    }
+    const char* english = uk ? "0" : "1";
+#if defined(_WIN32)
+    _putenv_s("XERENGE_LANGUAGE", english);
+#else
+    setenv("XERENGE_LANGUAGE", english, 1);
+#endif
+  }
   // Read here as well as by the launcher: a start without it (run.sh, an older
   // launcher) would otherwise still load RenderDoc and show its overlay.
   if (!ConfFlag("renderdoc", true)) {
