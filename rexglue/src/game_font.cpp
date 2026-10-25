@@ -519,20 +519,40 @@ struct Letters {
       case u'Ч': return ToCap(Rot180(m.Get(u'h')));
       case u'Б': {  // В's lower half under Г: B without its upper bowl, a bar across the top
         Glyph b = m.Get(u'B');
-        // The middle bar: the first row near the middle that is mostly ink.
+        // The middle bar: the first row near the middle with ink all the way
+        // from the stem to the middle (the upper bowl's foot, just above it, is
+        // open there - its counter).
         int middle = b.h / 2;
         for (int y = b.h * 3 / 10; y < b.h * 7 / 10; ++y) {
-          int ink = 0;
-          for (int x = 0; x < b.w; ++x) ink += b.Alpha(x, y) > 128;
-          if (ink * 10 >= b.w * 6) {
+          bool solid = true;
+          for (int x = stem; x < b.w * 6 / 10 && solid; ++x) solid = b.Alpha(x, y) > 96;
+          if (solid) {
             middle = y;
             break;
           }
         }
-        // Г (L turned over: the font's own bar) over B from its middle bar down.
+        // Its top rows still hold the upper bowl's foot, further right than the
+        // waist where the two bowls meet: cut off right of that waist.
+        Glyph lower = Crop(b, 0, middle, b.w, b.h - middle);
+        const auto right_edge = [&](int y) {
+          int r = -1;
+          for (int x = 0; x < lower.w; ++x)
+            if (lower.Alpha(x, y) > 96) r = x;
+          return r;
+        };
+        int waist = 0, narrowest = lower.w;
+        for (int y = 0; y < std::min(lower.h, bar * 3); ++y) {
+          const int r = right_edge(y);
+          if (r >= 0 && r < narrowest) {
+            narrowest = r;
+            waist = y;
+          }
+        }
+        Erase(lower, narrowest + 1, 0, lower.w, waist);
+        // Г (L turned over: the font's own bar) over it.
         Glyph g = FlipV(m.Get(u'L'));
         g.yoff = b.yoff;
-        return Over(g, Crop(b, 0, middle, b.w, b.h - middle), 0, middle);
+        return Over(g, lower, 0, middle);
       }
       case u'Д': {  // П on a bar a stem wider each side, its ends going down
         Glyph p = Scale(Pe(), 0.9f, 1.0f);
