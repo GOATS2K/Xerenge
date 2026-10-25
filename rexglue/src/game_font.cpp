@@ -398,6 +398,33 @@ int LeftStem(const Glyph& g) {
   return std::max(n, 1);
 }
 
+// A letter with a mark above (Ё's dots, Й's breve): the empty rows between
+// the mark and the letter cut down to `gap` - the fonts leave room there for
+// capitals' marks over small letters too.
+Glyph CloserMark(const Glyph& g, int gap) {
+  std::vector<bool> ink(g.h, false);
+  for (int y = 0; y < g.h; ++y)
+    for (int x = 0; x < g.w && !ink[y]; ++x) ink[y] = g.Alpha(x, y) > 64;
+  int y = 0;
+  while (y < g.h && !ink[y]) ++y;  // above the mark
+  while (y < g.h && ink[y]) ++y;   // the mark
+  const int first_blank = y;
+  while (y < g.h && !ink[y]) ++y;  // the gap
+  const int blank = y - first_blank;
+  if (y >= g.h || blank <= gap) return g;
+  const int cut = blank - gap;
+  // The mark moved down by `cut`: the rows above the gap shift, the letter stays.
+  Glyph o = Blank(g.w, g.h - cut);
+  o.xoff = g.xoff;
+  o.yoff = g.yoff + cut;
+  o.adv = g.adv;
+  for (int r = 0; r < o.h; ++r) {
+    const int from = r < first_blank ? r : r + cut;
+    std::memcpy(o.At(0, r), g.At(0, from), size_t(g.w) * 4);
+  }
+  return o;
+}
+
 // --- the letters --------------------------------------------------------------------
 
 struct Letters {
@@ -474,7 +501,7 @@ struct Letters {
       case u'А': return m.Get(u'A');
       case u'В': return m.Get(u'B');
       case u'Е': return m.Get(u'E');
-      case u'Ё': return m.Get(u'Ë');
+      case u'Ё': return CloserMark(m.Get(u'Ë'), std::max(1, stem / 2));
       case u'К': return m.Get(u'K');
       case u'М': return m.Get(u'M');
       case u'Н': return m.Get(u'H');
@@ -502,8 +529,10 @@ struct Letters {
             break;
           }
         }
-        Erase(b, stem, 0, b.w - stem, middle);
-        return Over(b, Bar(b.w), 0, 0);
+        // Г (L turned over: the font's own bar) over B from its middle bar down.
+        Glyph g = FlipV(m.Get(u'L'));
+        g.yoff = b.yoff;
+        return Over(g, Crop(b, 0, middle, b.w, b.h - middle), 0, middle);
       }
       case u'Д': {  // П on a bar a stem wider each side, its ends going down
         Glyph p = Scale(Pe(), 0.9f, 1.0f);
@@ -527,7 +556,7 @@ struct Letters {
         const Glyph n = m.Get(u'Ñ');
         if (!n.ok || n.h <= cap) return i;
         Glyph mark = Crop(n, 0, 0, n.w, n.h - cap);
-        return Over(i, mark, (i.w - mark.w) / 2, -(n.h - cap));
+        return CloserMark(Over(i, mark, (i.w - mark.w) / 2, -(n.h - cap)), std::max(1, stem / 2));
       }
       case u'П': return Pe();
       case u'Ф': {  // O with a stem through it, a little past it above and below
@@ -551,8 +580,8 @@ struct Letters {
       }
       case u'Ы': {
         const Glyph s = Soft();
-        Glyph g = Over(s, Stem(s.h), s.w + stem, 0);
-        g.adv = s.adv + 2 * stem;
+        Glyph g = Over(s, Stem(s.h), s.w + std::max(1, stem / 2), 0);
+        g.adv = s.adv + stem + std::max(1, stem / 2);
         return g;
       }
       case u'Э': {  // C turned round, a bar in the middle
@@ -562,7 +591,7 @@ struct Letters {
       }
       case u'Ю': {  // I, a bar, a narrower O
         Glyph o = Scale(m.Get(u'O'), 0.85f, 1.0f);
-        const int join = stem * 2;
+        const int join = std::max(2, stem * 2 / 3);
         Glyph g = Over(I, Resize(Crop(E, 0, 0, E.w, bar), join + stem, bar), I.w - stem / 2, (I.h - bar) / 2);
         g = Over(g, o, I.w + join, 0);
         g.adv = I.adv + join + o.adv;
@@ -576,7 +605,7 @@ struct Letters {
     switch (c) {
       case u'а': return m.Get(u'a');
       case u'е': return m.Get(u'e');
-      case u'ё': return m.Get(u'ë');
+      case u'ё': return CloserMark(m.Get(u'ë'), std::max(1, stem / 2));
       case u'о': return m.Get(u'o');
       case u'р': return m.Get(u'p');
       case u'с': return m.Get(u'c');
