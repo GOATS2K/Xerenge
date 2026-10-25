@@ -259,7 +259,16 @@ elif [ "$PRESET" = mac-arm64 ] || [ "$PRESET" = mac-amd64 ]; then
     # loader and MoltenVK staged in build/vulkan by itself.
     :
 else
-    export SDL_VIDEODRIVER=x11
+    # Native Wayland in a Wayland session (plume makes its surface through
+    # SDL), X11 otherwise and for xenos; SDL_VIDEODRIVER set already wins.
+    if [ -z "$SDL_VIDEODRIVER" ]; then
+        if [ -n "$WAYLAND_DISPLAY" ] && [ "$GPU_BACKEND" != xenos ]; then
+            SDL_VIDEODRIVER=wayland
+        else
+            SDL_VIDEODRIVER=x11
+        fi
+    fi
+    export SDL_VIDEODRIVER
     export LD_LIBRARY_PATH="$SDK_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 

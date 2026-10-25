@@ -236,8 +236,18 @@ std::vector<std::string> Prepare(const std::filesystem::path& dir, const Config&
   } else if (const char* home = std::getenv("HOME")) {
     logs = std::filesystem::path(home) / ".local" / "state" / "xerenge-burnout";
   }
-  // The game's libraries beside it; X11 for SDL (the scripts' choice too).
-  Env("SDL_VIDEODRIVER", "x11");
+  // The window: native Wayland in a Wayland session (plume makes its Vulkan
+  // surface through SDL, which knows Wayland), X11 otherwise and for xenos,
+  // whose instance enables only the xcb surface; video_driver in the conf,
+  // or SDL_VIDEODRIVER already set, decides instead.
+  const char* driver = std::getenv("SDL_VIDEODRIVER");
+  if (conf.Has("video_driver")) {
+    Env("SDL_VIDEODRIVER", conf.Get("video_driver"));
+  } else if (!driver || !*driver) {
+    const char* wayland = std::getenv("WAYLAND_DISPLAY");
+    Env("SDL_VIDEODRIVER", wayland && *wayland && renderer == "plume" ? "wayland" : "x11");
+  }
+  // The game's libraries beside it.
   const char* library_path = std::getenv("LD_LIBRARY_PATH");
   Env("LD_LIBRARY_PATH", (dir / "bin").string() + (library_path && *library_path ? std::string(":") + library_path : ""));
 #endif
