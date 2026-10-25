@@ -5,7 +5,9 @@
 //                                              Cyrillic made of its own letters
 //   fontgen fnt <font.bin> <file.fnt> <out.bin>  the font made of a BMFont
 //   fontgen ttf <font.bin> <file.ttf> <out.bin>  the font made of a TTF
-// The last two also write <out.bin>.png: a line of text drawn with it.
+//   fontgen recipe <font.bin> <recipe.txt> <out.bin>  letters added by a recipe
+//   fontgen default-recipe                     the built-in Cyrillic recipe, to start from
+// fnt, ttf and recipe also write <out.bin>.pam: a line of text drawn with it.
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -60,11 +62,17 @@ void Preview(const std::vector<uint8_t>& font, const std::string& path) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string(argv[1]) == "default-recipe") {
+    std::fputs(xerenge::fonts::CyrillicRecipe(), stdout);
+    return 0;
+  }
   if (argc < 5) {
     std::fprintf(stderr,
                  "usage: fontgen export <font.bin> <name> <dir>\n"
                  "       fontgen fnt <font.bin> <file.fnt> <out.bin>\n"
-                 "       fontgen ttf <font.bin> <file.ttf> <out.bin>\n");
+                 "       fontgen ttf <font.bin> <file.ttf> <out.bin>\n"
+                 "       fontgen recipe <font.bin> <recipe.txt> <out.bin>\n"
+                 "       fontgen default-recipe\n");
     return 2;
   }
   const std::string mode = argv[1];
@@ -109,6 +117,13 @@ int main(int argc, char** argv) {
           return true;
         },
         out, &why);
+  } else if (mode == "recipe") {
+    std::vector<uint8_t> text;
+    if (!Load(argv[3], text)) {
+      std::fprintf(stderr, "%s: not read\n", argv[3]);
+      return 1;
+    }
+    ok = xerenge::fonts::AddLetters(font, std::string(text.begin(), text.end()), out, &why);
   } else if (mode == "ttf") {
     std::vector<uint8_t> ttf;
     if (!Load(argv[3], ttf)) {

@@ -456,17 +456,6 @@ struct Letters {
   // (Its middle half: the ends of I may be rounded, worn or short of the box.)
   Glyph Stem(int h) const { return Resize(Crop(I, (I.w - stem) / 2, I.h / 4, stem, I.h / 2), stem, h); }
 
-  Glyph Pe() const {  // П: H without its crossbar, with a bar on top
-    Glyph g = H;
-    Erase(g, stem, bar, g.w - 2 * stem, g.h - bar);
-    return Over(g, Bar(g.w), 0, 0);
-  }
-  Glyph Soft() const {  // Ь: P upside down - the stem, the bowl at the foot
-    Glyph p = FlipV(m.Get(u'P'));
-    p.yoff = H.yoff;
-    return p;
-  }
-
   // A made letter's advance: its width and H's side bearings.
   Glyph Spaced(Glyph g) const {
     if (!g.ok) return g;
@@ -475,184 +464,373 @@ struct Letters {
     g.adv = g.w + 2 * bearing;
     return g;
   }
-  Glyph Tail(const Glyph& g) const {  // Ц and Щ: a stem below the right corner
-    const int t = std::max(2, cap / 6);
-    return Over(g, Stem(t), g.w - stem, g.h);
-  }
-  Glyph Sha() const {  // Ш: П turned over, wider, a stem in the middle
-    Glyph u = FlipV(Scale(Pe(), 1.45f, 1.0f));
-    u.yoff = H.yoff;
-    return Over(u, Stem(u.h), (u.w - stem) / 2, 0);
-  }
-
-  Glyph Upper(char16_t c) const {
-    const Glyph g = Made(c);
-    switch (c) {
-      case u'А': case u'В': case u'Е': case u'Ё': case u'К': case u'М': case u'Н':
-      case u'О': case u'Р': case u'С': case u'Т': case u'Х': case u'У':
-        return g;  // the Latin letter as it is
-      default:
-        return Spaced(g);
-    }
-  }
-
-  Glyph Made(char16_t c) const {
-    switch (c) {
-      case u'А': return m.Get(u'A');
-      case u'В': return m.Get(u'B');
-      case u'Е': return m.Get(u'E');
-      case u'Ё': return CloserMark(m.Get(u'Ë'), std::max(1, stem / 2));
-      case u'К': return m.Get(u'K');
-      case u'М': return m.Get(u'M');
-      case u'Н': return m.Get(u'H');
-      case u'О': return m.Get(u'O');
-      case u'Р': return m.Get(u'P');
-      case u'С': return m.Get(u'C');
-      case u'Т': return m.Get(u'T');
-      case u'Х': return m.Get(u'X');
-      case u'У': return m.Get(u'Y');
-      case u'Я': return FlipH(m.Get(u'R'));
-      case u'И': return FlipH(m.Get(u'N'));
-      case u'Г': return FlipV(m.Get(u'L'));
-      case u'Л': return FlipV(m.Get(u'V'));
-      case u'З': return ToCap(m.Get(u'3'));
-      case u'Ч': return ToCap(Rot180(m.Get(u'h')));
-      case u'Б': {  // В's lower half under Г: B without its upper bowl, a bar across the top
-        Glyph b = m.Get(u'B');
-        // The middle bar: the first row near the middle with ink all the way
-        // from the stem to the middle (the upper bowl's foot, just above it, is
-        // open there - its counter).
-        int middle = b.h / 2;
-        for (int y = b.h * 3 / 10; y < b.h * 7 / 10; ++y) {
-          bool solid = true;
-          for (int x = stem; x < b.w * 6 / 10 && solid; ++x) solid = b.Alpha(x, y) > 96;
-          if (solid) {
-            middle = y;
-            break;
-          }
-        }
-        // Its top rows still hold the upper bowl's foot, further right than the
-        // waist where the two bowls meet: cut off right of that waist.
-        Glyph lower = Crop(b, 0, middle, b.w, b.h - middle);
-        const auto right_edge = [&](int y) {
-          int r = -1;
-          for (int x = 0; x < lower.w; ++x)
-            if (lower.Alpha(x, y) > 96) r = x;
-          return r;
-        };
-        int waist = 0, narrowest = lower.w;
-        for (int y = 0; y < std::min(lower.h, bar * 3); ++y) {
-          const int r = right_edge(y);
-          if (r >= 0 && r < narrowest) {
-            narrowest = r;
-            waist = y;
-          }
-        }
-        Erase(lower, narrowest + 1, 0, lower.w, waist);
-        // Г (L turned over: the font's own bar) over it.
-        Glyph g = FlipV(m.Get(u'L'));
-        g.yoff = b.yoff;
-        return Over(g, lower, 0, middle);
-      }
-      case u'Д': {  // П on a bar a stem wider each side, its ends going down
-        Glyph p = Scale(Pe(), 0.9f, 1.0f);
-        Glyph g = Over(Blank(p.w + 2 * stem, p.h), p, stem, 0);
-        g.xoff = H.xoff;
-        g.yoff = H.yoff;
-        g.adv = H.adv + 2 * stem;
-        Erase(g, stem, g.h - bar, p.w, bar);
-        g = Over(g, Bar(g.w), 0, g.h - bar);
-        const int leg = std::max(2, cap / 6);
-        g = Over(g, Stem(leg), 0, g.h);
-        g = Over(g, Stem(leg), g.w - stem, g.h - leg);
-        return g;
-      }
-      case u'Ж': {  // a wide X with a stem through it
-        Glyph x = Scale(m.Get(u'X'), 1.4f, 1.0f);
-        return Over(x, Stem(x.h), (x.w - stem) / 2, 0);
-      }
-      case u'Й': {  // И under Ñ's mark
-        Glyph i = FlipH(m.Get(u'N'));
-        const Glyph n = m.Get(u'Ñ');
-        if (!n.ok || n.h <= cap) return i;
-        Glyph mark = Crop(n, 0, 0, n.w, n.h - cap);
-        return CloserMark(Over(i, mark, (i.w - mark.w) / 2, -(n.h - cap)), std::max(1, stem / 2));
-      }
-      case u'П': return Pe();
-      case u'Ф': {  // O with a stem through it, a little past it above and below
-        Glyph o = m.Get(u'O');
-        const int past = std::max(2, cap / 10);
-        return Over(o, Stem(o.h + 2 * past), (o.w - stem) / 2, -past);
-      }
-      case u'Ц': {
-        Glyph u = FlipV(Pe());
-        u.yoff = H.yoff;
-        return Tail(u);
-      }
-      case u'Ш': return Sha();
-      case u'Щ': return Tail(Sha());
-      case u'Ь': return Soft();
-      case u'Ъ': {  // Ь with a bar out to the left at the top
-        const Glyph s = Soft();
-        const int arm = stem * 2;
-        Glyph g = Over(s, Bar(arm + stem), -arm, 0);
-        return g;
-      }
-      case u'Ы': {
-        const Glyph s = Soft();
-        Glyph g = Over(s, Stem(s.h), s.w + std::max(1, stem / 2), 0);
-        g.adv = s.adv + stem + std::max(1, stem / 2);
-        return g;
-      }
-      case u'Э': {  // C turned round, a bar in the middle
-        Glyph c = FlipH(m.Get(u'C'));
-        const int w = c.w * 5 / 9;
-        return Over(c, Resize(Crop(E, 0, 0, E.w, bar), w, bar), c.w - w - stem / 2, (c.h - bar) / 2);
-      }
-      case u'Ю': {  // I, a bar, a narrower O
-        Glyph o = Scale(m.Get(u'O'), 0.85f, 1.0f);
-        const int join = std::max(2, stem * 2 / 3);
-        Glyph g = Over(I, Resize(Crop(E, 0, 0, E.w, bar), join + stem, bar), I.w - stem / 2, (I.h - bar) / 2);
-        g = Over(g, o, I.w + join, 0);
-        g.adv = I.adv + join + o.adv;
-        return g;
-      }
-      default: return Glyph();
-    }
-  }
-
-  Glyph Lower(char16_t c, const Glyph& x) const {
-    switch (c) {
-      case u'а': return m.Get(u'a');
-      case u'е': return m.Get(u'e');
-      case u'ё': return CloserMark(m.Get(u'ë'), std::max(1, stem / 2));
-      case u'о': return m.Get(u'o');
-      case u'р': return m.Get(u'p');
-      case u'с': return m.Get(u'c');
-      case u'у': return m.Get(u'y');
-      case u'х': return m.Get(u'x');
-      case u'ф': {  // a wider o on a stem from the ascenders to the descenders
-        const Glyph o = Scale(m.Get(u'o'), 1.3f, 1.0f), b = m.Get(u'b'), p = m.Get(u'p');
-        if (!o.ok || !b.ok || !p.ok) break;
-        const int rise = int(std::lround(o.yoff - b.yoff));
-        const int fall = int(std::lround((p.yoff + p.h) - (o.yoff + o.h)));
-        return Spaced(Over(o, Stem(rise + o.h + fall), (o.w - stem) / 2, -rise));
-      }
-      default: break;
-    }
-    // The rest: the capital, as tall as x.
-    const char16_t upper = c == u'ё' ? u'Ё' : char16_t(c - 0x20);
-    Glyph g = Upper(upper);
-    if (!g.ok || !x.ok) return g;
-    const float s = float(x.h) / float(cap);
-    const float under = g.yoff + g.h - (H.yoff + cap);  // below the baseline (Д, Ц, Щ)
-    const float over = H.yoff - g.yoff;                  // above the capitals (Й)
-    g = Scale(g, s, s);
-    g.yoff = x.yoff - over * s;
-    (void)under;
-    return g;
-  }
 };
+
+// --- recipes ------------------------------------------------------------------------
+//
+// A font recipe: what letters to add to one of the game's fonts and how each is
+// made of the glyphs it has - a mod's (FontBig = recipe:<file>), or Xerenge's
+// own Cyrillic (kCyrillicRecipe, FontBig = auto). Text, a letter a line:
+//
+//   Я = flipH R
+//   Б = over (flipV L) (belowMiddle B)
+//
+// The left side is the letter added; on the right, a glyph is one character
+// (or U+XXXX): a letter made earlier in the recipe, else the font's own. The
+// operations (prefix, parentheses where one is an argument of another):
+//   flipH g, flipV g, rot180 g    mirrored, upside down, turned round
+//   cap g                         as tall as the capitals (H)
+//   small g                       a small capital: as tall as x
+//   closer g                      a mark above (dots, a breve) nearer its letter
+//   wide <f> g                    f times as wide
+//   hollow g                      emptied between its stems, under the top bar
+//   bar top|middle|bottom [<f>] [left|right] g
+//                                 E's bar across it (f of its width, at a side)
+//   stem center|left|right [<f>] g   I's stem down it, f of the capitals past it
+//   stemSpan a b g                a stem through g from a's top to b's foot
+//   tail g                        a stub below its right corner (Ц, Щ)
+//   legs g                        on a bar a stem wider each side, the ends down (Д)
+//   belowMiddle g                 from its middle bar down (B for Б)
+//   over a b                      b over a, each where its own metrics put it
+//   mark g n                      the mark above n (Ñ's tilde) above g
+//   arm g                         a bar out to the left at its top (Ъ)
+//   beside [<gap>] a b            b right of a, gap in stems (Ы)
+//   join [<gap>] a b              a, a bar at the middle, b (Ю)
+// A letter made by an operation is spaced as the capitals are (H's side
+// bearings); one taken as it is, or `small`, keeps its own advance.
+// # starts a comment.
+
+const char kCyrillicRecipe[] = R"(# Cyrillic of the game's own letters.
+А = A
+В = B
+Е = E
+Ё = closer Ë
+К = K
+М = M
+Н = H
+О = O
+Р = P
+С = C
+Т = T
+Х = X
+У = Y
+Я = flipH R
+И = flipH N
+Г = flipV L
+Л = flipV V
+З = cap 3
+Ч = cap (rot180 h)
+П = bar top (hollow H)
+Б = over (flipV L) (belowMiddle B)
+Д = legs (wide 0.9 П)
+Ж = stem center (wide 1.4 X)
+Й = mark И Ñ
+Ф = stem center 0.1 O
+Ц = tail (flipV П)
+Ш = stem center (flipV (wide 1.45 П))
+Щ = tail Ш
+Ь = flipV P
+Ъ = arm Ь
+Ы = beside 0.5 Ь I
+Э = bar middle 0.55 right (flipH C)
+Ю = join 0.67 I (wide 0.85 O)
+а = a
+б = small Б
+в = small В
+г = small Г
+д = small Д
+е = e
+ё = closer ë
+ж = small Ж
+з = small З
+и = small И
+й = small Й
+к = small К
+л = small Л
+м = small М
+н = small Н
+о = o
+п = small П
+р = p
+с = c
+т = small Т
+у = y
+ф = stemSpan b p (wide 1.3 o)
+х = x
+ц = small Ц
+ч = small Ч
+ш = small Ш
+щ = small Щ
+ъ = small Ъ
+ы = small Ы
+ь = small Ь
+э = small Э
+ю = small Ю
+я = small Я
+)";
+
+namespace {
+
+class Recipe {
+ public:
+  Recipe(const Maker& maker, const Letters& letters) : m_(maker), l_(letters) {}
+
+  // Each line's letter, made; a line it cannot read is noted in `why`.
+  std::vector<std::pair<char16_t, Glyph>> Make(const std::string& text, std::string* why) {
+    std::vector<std::pair<char16_t, Glyph>> made;
+    size_t start = 0;
+    int number = 0;
+    while (start < text.size()) {
+      size_t end = text.find('\n', start);
+      if (end == std::string::npos) end = text.size();
+      std::string line = text.substr(start, end - start);
+      start = end + 1;
+      ++number;
+      if (const size_t hash = line.find('#'); hash != std::string::npos) line.erase(hash);
+      const size_t eq = line.find('=');
+      if (eq == std::string::npos) continue;
+      tokens_ = Tokens(line.substr(eq + 1));
+      at_ = 0;
+      const std::vector<std::string> left = Tokens(line.substr(0, eq));
+      if (left.size() != 1) continue;
+      const uint32_t letter = CodeOf(left[0]);
+      if (!letter || letter > 0xFFFF) continue;
+      bool spaced = false;
+      Glyph g = Expr(&spaced);
+      if (!g.ok || at_ != tokens_.size()) {
+        if (why) *why += "line " + std::to_string(number) + " not made; ";
+        continue;
+      }
+      if (spaced) g = l_.Spaced(g);
+      made_[char16_t(letter)] = g;
+      made.push_back({char16_t(letter), g});
+    }
+    return made;
+  }
+
+ private:
+  static std::vector<std::string> Tokens(const std::string& s) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s) {
+      if (c == ' ' || c == '\t' || c == '\r' || c == '(' || c == ')') {
+        if (!cur.empty()) out.push_back(cur);
+        cur.clear();
+        if (c == '(' || c == ')') out.push_back(std::string(1, c));
+      } else {
+        cur += c;
+      }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+  }
+
+  // One character (UTF-8) or U+XXXX: its code; 0 for anything else.
+  static uint32_t CodeOf(const std::string& t) {
+    if (t.size() > 2 && (t[0] == 'U' || t[0] == 'u') && t[1] == '+') {
+      return uint32_t(std::strtoul(t.c_str() + 2, nullptr, 16));
+    }
+    const uint8_t c = uint8_t(t[0]);
+    const size_t len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+    if (t.size() != len) return 0;
+    uint32_t point = len > 1 ? c & (0x7F >> len) : c;
+    for (size_t k = 1; k < len; ++k) point = point << 6 | (uint8_t(t[k]) & 0x3F);
+    return point;
+  }
+
+  bool More() const { return at_ < tokens_.size(); }
+  const std::string& Peek() const {
+    static const std::string none;
+    return More() ? tokens_[at_] : none;
+  }
+  bool IsNumber(const std::string& t) const {
+    return !t.empty() && (std::isdigit(static_cast<unsigned char>(t[0])) || t[0] == '.');
+  }
+  float Number(float fallback) {
+    if (IsNumber(Peek())) return std::strtof(tokens_[at_++].c_str(), nullptr);
+    return fallback;
+  }
+  bool Word(const char* word) {
+    if (Peek() == word) {
+      ++at_;
+      return true;
+    }
+    return false;
+  }
+
+  Glyph Arg() {
+    bool ignored = false;
+    return Expr(&ignored);
+  }
+
+  Glyph Expr(bool* spaced) {
+    if (!More()) return Glyph();
+    if (Word("(")) {
+      Glyph g = Expr(spaced);
+      if (!Word(")")) return Glyph();
+      return g;
+    }
+    const std::string op = tokens_[at_];
+    if (const uint32_t code = CodeOf(op)) {  // a glyph
+      ++at_;
+      const auto made = made_.find(char16_t(code));
+      return made != made_.end() ? made->second : m_.Get(char16_t(code));
+    }
+    ++at_;
+    *spaced = true;
+    const int stem = l_.stem, bar = l_.bar, cap = l_.cap;
+    if (op == "flipH") return FlipH(Arg());
+    if (op == "flipV") return FlipV(Arg());
+    if (op == "rot180") return Rot180(Arg());
+    if (op == "cap") return l_.ToCap(Arg());
+    if (op == "closer") {
+      *spaced = false;
+      return CloserMark(Arg(), std::max(1, stem / 2));
+    }
+    if (op == "small") {
+      *spaced = false;
+      Glyph g = Arg();
+      const Glyph x = m_.Get(u'x');
+      if (!g.ok || !x.ok) return g;
+      const float s = float(x.h) / float(cap);
+      const float over = l_.H.yoff - g.yoff;  // above the capitals (Й)
+      g = Scale(g, s, s);
+      g.yoff = x.yoff - over * s;
+      return g;
+    }
+    if (op == "wide") {
+      const float f = Number(1.0f);
+      return Scale(Arg(), f, 1.0f);
+    }
+    if (op == "hollow") {
+      Glyph g = Arg();
+      Erase(g, stem, bar, g.w - 2 * stem, g.h - bar);
+      return g;
+    }
+    if (op == "bar") {
+      const bool top = Word("top"), middle = !top && Word("middle"), bottom = !top && !middle && Word("bottom");
+      const float share = Number(1.0f);
+      const bool left = Word("left"), right = !left && Word("right");
+      Glyph g = Arg();
+      if (!g.ok) return g;
+      const int w = std::max(1, int(std::lround(g.w * share)));
+      const int x = right ? g.w - w - (share < 1.0f ? stem / 2 : 0) : left ? 0 : (g.w - w) / 2;
+      const int y = top ? 0 : bottom ? g.h - bar : (g.h - bar) / 2;
+      (void)middle;
+      return Over(g, l_.Bar(w), x, y);
+    }
+    if (op == "stem") {
+      const bool left = Word("left"), right = !left && Word("right");
+      Word("center");
+      const float past = Number(0.0f);
+      Glyph g = Arg();
+      if (!g.ok) return g;
+      const int extra = past > 0 ? std::max(2, int(std::lround(cap * past))) : 0;
+      const int x = left ? 0 : right ? g.w - stem : (g.w - stem) / 2;
+      return Over(g, l_.Stem(g.h + 2 * extra), x, -extra);
+    }
+    if (op == "stemSpan") {
+      const Glyph a = Arg(), b = Arg();
+      Glyph g = Arg();
+      if (!g.ok || !a.ok || !b.ok) return g;
+      const int rise = int(std::lround(g.yoff - a.yoff));
+      const int fall = int(std::lround((b.yoff + b.h) - (g.yoff + g.h)));
+      return Over(g, l_.Stem(rise + g.h + fall), (g.w - stem) / 2, -rise);
+    }
+    if (op == "tail") {
+      Glyph g = Arg();
+      if (!g.ok) return g;
+      return Over(g, l_.Stem(std::max(2, cap / 6)), g.w - stem, g.h);
+    }
+    if (op == "legs") {
+      Glyph p = Arg();
+      if (!p.ok) return p;
+      Glyph g = Over(Blank(p.w + 2 * stem, p.h), p, stem, 0);
+      g.xoff = l_.H.xoff;
+      g.yoff = l_.H.yoff;
+      g.adv = l_.H.adv + 2 * stem;
+      Erase(g, stem, g.h - bar, p.w, bar);
+      g = Over(g, l_.Bar(g.w), 0, g.h - bar);
+      const int leg = std::max(2, cap / 6);
+      g = Over(g, l_.Stem(leg), 0, g.h);
+      return Over(g, l_.Stem(leg), g.w - stem, g.h - leg);
+    }
+    if (op == "belowMiddle") {
+      Glyph b = Arg();
+      if (!b.ok) return b;
+      // The middle bar: the first row near the middle with ink all the way
+      // from the stem to the middle (the upper bowl's foot, just above it, is
+      // open there - its counter).
+      int middle = b.h / 2;
+      for (int y = b.h * 3 / 10; y < b.h * 7 / 10; ++y) {
+        bool solid = true;
+        for (int x = stem; x < b.w * 6 / 10 && solid; ++x) solid = b.Alpha(x, y) > 96;
+        if (solid) {
+          middle = y;
+          break;
+        }
+      }
+      // Its top rows still hold the upper bowl's foot, further right than the
+      // waist where the two bowls meet: cut off right of that waist.
+      Glyph lower = Crop(b, 0, middle, b.w, b.h - middle);
+      int waist = 0, narrowest = lower.w;
+      for (int y = 0; y < std::min(lower.h, bar * 3); ++y) {
+        int r = -1;
+        for (int x = 0; x < lower.w; ++x)
+          if (lower.Alpha(x, y) > 96) r = x;
+        if (r >= 0 && r < narrowest) {
+          narrowest = r;
+          waist = y;
+        }
+      }
+      Erase(lower, narrowest + 1, 0, lower.w, waist);
+      return lower;
+    }
+    if (op == "over") {
+      Glyph a = Arg();
+      const Glyph b = Arg();
+      if (!a.ok || !b.ok) return a.ok ? a : b;
+      return Over(a, b, 0, int(std::lround(b.yoff - a.yoff)));
+    }
+    if (op == "mark") {
+      Glyph g = Arg();
+      const Glyph n = Arg();
+      if (!g.ok || !n.ok || n.h <= cap) return g;
+      Glyph mark = Crop(n, 0, 0, n.w, n.h - cap);
+      return CloserMark(Over(g, mark, (g.w - mark.w) / 2, -(n.h - cap)), std::max(1, stem / 2));
+    }
+    if (op == "arm") {
+      const Glyph s = Arg();
+      if (!s.ok) return s;
+      const int arm = stem * 2;
+      return Over(s, l_.Bar(arm + stem), -arm, 0);
+    }
+    if (op == "beside") {
+      const float gap_stems = Number(0.5f);
+      const Glyph a = Arg(), b = Arg();
+      if (!a.ok || !b.ok) return a;
+      const int gap = std::max(1, int(std::lround(stem * gap_stems)));
+      return Over(a, b, a.w + gap, int(std::lround(b.yoff - a.yoff)));
+    }
+    if (op == "join") {
+      const float gap_stems = Number(0.67f);
+      const Glyph a = Arg(), b = Arg();
+      if (!a.ok || !b.ok) return a;
+      const int join = std::max(2, int(std::lround(stem * gap_stems)));
+      Glyph g = Over(a, l_.Bar(join + stem), a.w - stem / 2, (a.h - bar) / 2);
+      return Over(g, b, a.w + join, int(std::lround(b.yoff - a.yoff)));
+    }
+    return Glyph();
+  }
+
+  const Maker& m_;
+  const Letters& l_;
+  std::vector<std::string> tokens_;
+  size_t at_ = 0;
+  std::map<char16_t, Glyph> made_;
+};
+
+}  // namespace
 
 // --- where they go in the atlas -------------------------------------------------
 
@@ -714,26 +892,30 @@ bool Rebuild(Font& font, const std::vector<uint8_t>& rgba, uint32_t w, uint32_t 
 }  // namespace
 
 bool AddCyrillic(const std::vector<uint8_t>& in, std::vector<uint8_t>& out, std::string* why) {
+  return AddLetters(in, kCyrillicRecipe, out, why);
+}
+
+const char* CyrillicRecipe() { return kCyrillicRecipe; }
+
+bool AddLetters(const std::vector<uint8_t>& in, const std::string& recipe, std::vector<uint8_t>& out,
+                std::string* why) {
   Font font;
   if (!Read(in, font, why)) return false;
-  if (font.cyrillic) {
-    if (why) *why = "Cyrillic already there";
-    return false;
-  }
   Maker maker(font);
   if (!maker.Has(u'H') || !maker.Has(u'E') || !maker.Has(u'I')) {
     if (why) *why = "no H, E or I to make the letters of";
     return false;
   }
   Letters letters(maker);
-  const Glyph x = maker.Get(u'x');
-  const bool lower = maker.Has(u'a') && x.ok;
-
-  std::vector<std::pair<char16_t, Glyph>> made;
-  for (char16_t c = u'А'; c <= u'Я'; ++c) made.push_back({c, letters.Upper(c)});
-  made.push_back({u'Ё', letters.Upper(u'Ё')});
-  for (char16_t c = u'а'; c <= u'я'; ++c) made.push_back({c, lower ? letters.Lower(c, x) : letters.Upper(char16_t(c - 0x20))});
-  made.push_back({u'ё', lower ? letters.Lower(u'ё', x) : letters.Upper(u'Ё')});
+  std::string unread;
+  std::vector<std::pair<char16_t, Glyph>> made = Recipe(maker, letters).Make(recipe, &unread);
+  // A letter the font has already is left as it is.
+  made.erase(std::remove_if(made.begin(), made.end(), [&](const auto& m) { return maker.Has(m.first); }),
+             made.end());
+  if (made.empty()) {
+    if (why) *why = unread.empty() ? "nothing to add" : unread;
+    return false;
+  }
 
   // The font's glyphs where they are, the new ones in a strip under the
   // atlas, all packed anew into an atlas of the font's own size (Rebuild).

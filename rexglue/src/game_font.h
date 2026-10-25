@@ -12,6 +12,13 @@ namespace xerenge::fonts {
 // with `out` untouched, for a font it cannot read (or one already done).
 bool AddCyrillic(const std::vector<uint8_t>& in, std::vector<uint8_t>& out, std::string* why = nullptr);
 
+// The letters a recipe makes of the font's own glyphs (its format: the
+// comment over kCyrillicRecipe in game_font.cpp, and MODDING.md), added where
+// the font has none; AddCyrillic is the built-in recipe, CyrillicRecipe() its text.
+bool AddLetters(const std::vector<uint8_t>& in, const std::string& recipe, std::vector<uint8_t>& out,
+                std::string* why = nullptr);
+const char* CyrillicRecipe();
+
 // The font's atlas as RGBA (for looking at), and a line of text drawn with
 // it, both `width` x `height`.
 bool AtlasImage(const std::vector<uint8_t>& font, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height);

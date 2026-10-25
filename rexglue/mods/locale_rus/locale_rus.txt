@@ -1,0 +1,33 @@
+# Russian: KEY = text, \n for a new line; a key not here keeps the game's
+# (English) text. Every key and its English text: tools/localeexport writes
+# them from the game's own strings (MODDING.md).
+FESONGMANAGER = МЕНЕДЖЕР ПЕСЕН
+FEDRIVERDETEATRAX = [EA™ TRAX]
+FEDRIVERDETPLAYINGORDER = ПОРЯДОК:
+FEDRIVERDETSEQUENTIALLY = ПО ОЧЕРЕДИ
+FEPREVIEWTRACK = Прослушать
+FEBACK = Назад
+FESELECT = Выбрать
+SELECT = Выбрать
+Continue = Продолжить
+FEDRIVERDETAILS = Профиль
+FESINGLEPLAYER = МИРОВОЙ ТУР
+FEWORLDTOUR = МИРОВОЙ ТУР
+FEMULTIPLAYER = МУЛЬТИПЛЕЕР
+FEDRIVERDETPROFILE = ФАЙЛ ИГРОКА
+FEDRIVERDETSTATS = СТАТИСТИКА
+FEDRIVERDETMUSICVOL = ГРОМКОСТЬ МУЗЫКИ
+FEDRIVERDETEFFECTSVOL = ГРОМКОСТЬ ЗВУКОВ
+FEDRIVERDETALL = ВКЛ
+QUIT = ВЫХОД
+PauseQuit = ВЫХОД
+Yes = ДА
+No = НЕТ
+YES = ДА
+NO = НЕТ
+ButtonPromptYes = Да
+ButtonPromptNo = Нет
+ButtonPromptGameOptions = Настройки
+XerengeQuit = Выйти из игры?
+XerengeQuitHint = Выход
+FEDRIVERDETRANDOMLY = СЛУЧАЙНО

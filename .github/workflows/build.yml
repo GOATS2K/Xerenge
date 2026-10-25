@@ -20,7 +20,7 @@ on:
       job:
         description: Run only this job (a manual dispatch only; a push always builds everything)
         type: choice
-        options: [all, linux-amd64, win-amd64, android-arm64, macos-arm64, lobby-server]
+        options: [all, linux-amd64, win-amd64, android-arm64, macos-arm64, lobby-server, mods]
         default: all
 
 permissions:
@@ -630,11 +630,38 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  # The mods kept in rexglue/mods, each a zip of its folder - unzipped into the
+  # installed game's game/mods/ (MODDING.md). Only text: what they need of the
+  # game (a localisation's fonts) is made from the player's own copy.
+  mods:
+    if: github.event_name != 'workflow_dispatch' || inputs.job == 'all' || inputs.job == 'mods'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Zip
+        run: |
+          mkdir -p out
+          cd rexglue/mods
+          for mod in */; do
+            mod=${mod%/}
+            [ -f "$mod/mod.cfg" ] || continue
+            zip -r "../../out/Xerenge-mod-$mod.zip" "$mod" -x "$mod/.cache/*"
+          done
+          ls -la ../../out
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: burnout-revenge-mods
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+
   # A release when VERSION names one that does not exist yet: a push to main
   # that raises VERSION publishes the installers as the
   # latest release.
   release:
-    needs: [linux-amd64, win-amd64, android-arm64, macos-arm64, lobby-server]
+    needs: [linux-amd64, win-amd64, android-arm64, macos-arm64, lobby-server, mods]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
@@ -686,6 +713,8 @@ jobs:
 
           **macOS** (Apple silicon): download `Burnout_Revenge_Installer-macos-arm64.zip`, unzip it and run the app inside. It puts `Burnout Revenge.app` in `~/Applications`, so the game starts from Launchpad or Spotlight. The app is signed ad hoc, so macOS stops it the first time it is opened after a download; allow it under System Settings, Privacy & Security, Open Anyway. The installed game logs to `~/Library/Logs/xerenge-burnout/`.
 
+          **Russian** (a mod): unzip `Xerenge-mod-locale_rus.zip` into the installed game's `game/mods/` and choose RUSSIAN in Driver Details > Settings > LANGUAGE. Its fonts are made at the first start from your own copy of the game; see `MODDING.md` to translate further or make a mod of your own.
+
           **Online play works out of the box** - the installer points at the server (`94639.snk.wtf`), where everyone plays together; there is nothing to set up. An install from before the server is moved to it when the installer runs over it.
 
           **What's new in 0.4.8:**
@@ -704,4 +733,5 @@ jobs:
             artifacts/Burnout_Revenge_Installer-x86_64.AppImage \
             artifacts/Burnout_Revenge_Installer-win-amd64.exe \
             artifacts/Burnout_Revenge-android-arm64.apk \
-            artifacts/Burnout_Revenge_Installer-macos-arm64.zip
+            artifacts/Burnout_Revenge_Installer-macos-arm64.zip \
+            artifacts/Xerenge-mod-*.zip

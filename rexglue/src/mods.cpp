@@ -204,8 +204,17 @@ std::string MadeFont(const Mod& mod, const std::string& game_file) {
   if (source.empty()) return {};
   const std::filesystem::path root = REXCVAR_GET(game_data_root);
   const std::filesystem::path original = OnDisk(root, game_file);
-  const std::filesystem::path font = mod.root / source;
-  const std::filesystem::path made = mod.root / ".cache" / (name + ".bin");
+  // auto: the built-in recipe (Cyrillic of the game's own letters); recipe:<file>:
+  // the mod's; otherwise a font file.
+  const bool automatic = Lower(source) == "auto";
+  const bool recipe = source.rfind("recipe:", 0) == 0;
+  const std::filesystem::path font = automatic ? mod.root / "mod.cfg" : mod.root / (recipe ? Trim(source.substr(7)) : source);
+  // The built-in recipe changes with Xerenge, not with the mod: its hash in the
+  // name, so a new one makes the font again.
+  const std::filesystem::path made =
+      mod.root / ".cache" /
+      (automatic ? name + "." + std::to_string(std::hash<std::string>{}(fonts::CyrillicRecipe()) % 1000000007) + ".bin"
+                 : name + ".bin");
   const std::string ext = Lower(font.extension().string());
   std::vector<std::filesystem::path> inputs = {original, font, mod.root / "mod.cfg"};
   if (!mod.Get("Localization").empty()) inputs.push_back(mod.root / mod.Get("Localization"));
@@ -220,7 +229,14 @@ std::string MadeFont(const Mod& mod, const std::string& game_file) {
     std::string why;
     bool ok = false;
     const std::vector<uint8_t> base = ReadFile(original);
-    if (ext == ".fnt") {
+    if (automatic || recipe) {
+      std::string text = fonts::CyrillicRecipe();
+      if (recipe) {
+        const std::vector<uint8_t> bytes = ReadFile(font);
+        text.assign(bytes.begin(), bytes.end());
+      }
+      ok = fonts::AddLetters(base, text, out, &why);
+    } else if (ext == ".fnt") {
       const std::vector<uint8_t> text = ReadFile(font);
       const auto dir = font.parent_path();
       ok = fonts::FromBmfont(

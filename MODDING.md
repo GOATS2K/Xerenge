@@ -35,11 +35,14 @@ Name = Russian
 
 Localization = locale_rus.txt
 
-FontBig = Big.fnt
-FontBigDistressed = BigDistressed.fnt
-FontSmall = Small.fnt
+FontBig = recipe:font_recipe.txt
+FontBigDistressed = recipe:font_recipe.txt
+FontSmall = recipe:font_recipe.txt
 # FontDigital = Digital.fnt
 ```
+
+This is `rexglue/mods/locale_rus` in the repository, which the releases carry
+as `Xerenge-mod-locale_rus.zip`.
 
 | Key | What it is |
 |---|---|
@@ -109,8 +112,12 @@ The game draws all of its text with four fonts:
 | `FontSmall` | `language/fonts/small.bin` | Smaller text (Univers 47 Condensed Light) |
 | `FontDigital` | `language/fonts/digital.bin` | The LCD-style numbers - digits only |
 
-A font may be given in either of two forms; the extension says which:
+A font may be given in one of four forms:
 
+- **A recipe** - `recipe:font_recipe.txt`. The new letters made of the game's
+  own glyphs, on the player's machine, from their copy of the game: nothing of
+  the game's is in the mod, so it can be shared freely. See *Font recipes*
+  below. `auto` is Xerenge's own Cyrillic recipe.
 - **A BMFont** - `.fnt` (the text format) and its `.png` page(s). Pictures of
   each letter, drawn as you like: this is how to make a font look like the
   game's, wear and all.
@@ -150,6 +157,54 @@ What to keep in mind when drawing:
 - Every character your text uses needs a glyph. A character the font does not
   have is drawn as nothing.
 
+### Font recipes
+
+A recipe adds letters to a game font by putting them together out of the
+font's own glyphs - with the font's own strokes, wear and proportions - when
+the game starts on the player's machine. A letter a line, `#` a comment:
+
+```
+Я = flipH R
+Г = flipV L
+П = bar top (hollow H)
+Б = over (flipV L) (belowMiddle B)
+Ф = stem center 0.1 O
+б = small Б
+```
+
+On the right, a glyph is one character (or `U+0411`): a letter made earlier in
+the recipe, otherwise the game font's own. Operations take their arguments
+after them; parentheses make one an argument of another.
+
+| Operation | Makes |
+|---|---|
+| `flipH g`, `flipV g`, `rot180 g` | g mirrored, upside down, turned round |
+| `cap g` | g as tall as the capitals (H) |
+| `small g` | g as a small capital, as tall as `x` |
+| `closer g` | g's mark (dots, a breve) moved down near the letter |
+| `wide <f> g` | g f times as wide |
+| `hollow g` | g emptied between its stems, under the top |
+| `bar top\|middle\|bottom [<f>] [left\|right] g` | E's bar across g - f of its width, at a side |
+| `stem [center\|left\|right] [<f>] g` | I's stem down g, f of the capitals' height past it above and below |
+| `stemSpan a b g` | a stem through g from a's top to b's foot (ф: `stemSpan b p o`) |
+| `tail g` | a stub below g's right corner (Ц, Щ) |
+| `legs g` | g on a bar a stem wider each side, its ends going down (Д) |
+| `belowMiddle g` | g from its middle bar down (B, for Б) |
+| `over a b` | b drawn over a, each where its own height puts it |
+| `mark g n` | n's mark (Ñ's tilde) above g (Й) |
+| `arm g` | a bar out to the left of g's top (Ъ) |
+| `beside [<gap>] a b` | b to the right of a, gap in stems (Ы) |
+| `join [<gap>] a b` | a, a bar at mid height, b (Ю) |
+
+A letter made by an operation gets the capitals' side bearings; one taken as
+it is, or with `small` or `closer`, keeps its own advance. A letter the font
+has already is left alone, and a line that cannot be read is skipped (the log
+says which).
+
+`fontgen default-recipe` prints Xerenge's Cyrillic recipe - the start of one
+of your own - and `fontgen recipe <game font> <recipe.txt> <out.bin>` makes
+the font as the game will, with a line of text drawn in `<out.bin>.pam`.
+
 ### What happens at the start
 
 Before the game's files are opened, Xerenge makes each of the mod's fonts into
@@ -185,4 +240,5 @@ A mod is shared as its folder, `.cache` left out. Do not put the game's own
 files in it: a font exported from the game and only touched up is still the
 game's font, and the game's text is the game's. Fonts of your own drawing, or
 fonts whose licence allows it (SIL Open Font License and the like), and your
-own translation, are fine.
+own translation, are fine - and a recipe, which carries none of the game's
+pixels, is the way to give a mod the game's own look.
