@@ -275,17 +275,15 @@ Tags ReadTags(const std::filesystem::path& file) {
   return Lower(file.extension().string()) == ".wma" ? ReadWmaTags(data) : ReadMp3Tags(data);
 }
 
+// A localisation mod's fonts, loaded whatever the language once a mod has
+// them (mods.cpp), hold Cyrillic: with them, the names go as they are.
+bool FontsHaveCyrillic() {
+  return xerenge::mods::FontsHaveModLetters();
+}
+
 // The game's fonts hold Latin-1 only (language/fonts/*.bin): Cyrillic is
 // written in Latin letters, the rest of what they lack as '?' - unless a
 // localisation mod's fonts are in use.
-// A localisation mod's fonts are made with Cyrillic (mods.cpp): with one,
-// the names go as they are.
-bool FontsHaveCyrillic() {
-  const xerenge::mods::Mod* mod = xerenge::mods::ActiveLocalization();
-  return mod && (!mod->Get("FontBig").empty() || !mod->Get("FontSmall").empty() ||
-                 !mod->Get("FontBigDistressed").empty());
-}
-
 std::string ForGameFont(const std::vector<uint32_t>& points) {
   if (FontsHaveCyrillic()) {
     std::string out;

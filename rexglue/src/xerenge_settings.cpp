@@ -157,53 +157,32 @@ const std::vector<Setting>& Settings() {
                      {{"ASK AT START", ""}, {"ENGLISH", "0"}, {"ENGLISH (US)", "1"}, {"ESPANOL", "5"},
                       {"NEDERLANDS", "10"}, {"SVENSKA", "11"}, {"SUOMI", "12"}},
                      1};
-    // The localisation mods after the game's languages, by their names; one
-    // chosen is locale_mod (mods.h) over the game's language as it was.
+    // The localisation mods after the game's languages, by their names, each
+    // language = its folder (mods.h); under one the game runs in English.
     const size_t game_languages = language.options.size();
-    static std::deque<std::string> names;
+    static std::deque<std::string> names, folders;
     for (const auto& mod : mods::Localizations()) {
       std::string name = mod.Get("Name").empty() ? mod.folder : mod.Get("Name");
       for (auto& ch : name) ch = char(std::toupper(static_cast<unsigned char>(ch)));
       names.push_back(name);
-      language.options.push_back({names.back().c_str(), ""});
+      folders.push_back(mod.folder);
+      language.options.push_back({names.back().c_str(), folders.back().c_str()});
     }
     if (language.options.size() > game_languages) {
-      language.get = [game_languages] {
-        const auto& found = mods::Localizations();
-        if (const mods::Mod* active = mods::ActiveLocalization()) {
-          for (size_t i = 0; i < found.size(); ++i)
-            if (&found[i] == active) return int(game_languages + i);
-        }
-        const std::string value = ConfValue("language", "1");
-        static const char* const kValues[] = {"", "0", "1", "5", "10", "11", "12"};
-        for (size_t i = 0; i < std::size(kValues); ++i)
-          if (value == kValues[i]) return int(i);
-        return 1;
-      };
+      // No language at all: the first mod (mods.h).
+      language.fallback = int(game_languages);
       language.set = [game_languages](int option) {
-        static const char* const kValues[] = {"", "0", "1", "5", "10", "11", "12"};
-        if (size_t(option) >= game_languages) {
-          WriteConf("locale_mod", mods::Localizations()[size_t(option) - game_languages].folder);
-          // Under the mod, English: what it has not translated is English, not
-          // the language chosen before it (EN-GB on the European disc, the
-          // American one's only language there).
-          WriteConf("language", g_single_language ? "1" : "0");
-          // Its text at once, where the game already shows its fonts in English.
-          const mods::Mod* mod = &mods::Localizations()[size_t(option) - game_languages];
-          if (!g_mod_english.empty() && mods::CanShowLive(mod)) {
-            mods::SetLive(mod);
-          } else {
-            g_restart = true;
-          }
+        const auto& options = Settings().front().options;
+        WriteConf("language", options[size_t(option)].value);
+        // At once where the game can show it so: a mod's text under the English
+        // it runs in with that mod's fonts, or back to that English; anything
+        // else after a restart.
+        const mods::Mod* mod =
+            size_t(option) >= game_languages ? &mods::Localizations()[size_t(option) - game_languages] : nullptr;
+        if (!g_mod_english.empty() && (mod ? mods::CanShowLive(mod) : g_mod_english == options[size_t(option)].value)) {
+          mods::SetLive(mod);
         } else {
-          WriteConf("locale_mod", "");
-          WriteConf("language", kValues[option]);
-          // Back to the English the game runs in: at once; another: a restart.
-          if (!g_mod_english.empty() && g_mod_english == kValues[option]) {
-            mods::SetLive(nullptr);
-          } else {
-            g_restart = true;
-          }
+          g_restart = true;
         }
       };
     }

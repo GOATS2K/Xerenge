@@ -259,8 +259,24 @@ std::map<std::string, std::string> g_made;
 
 }  // namespace
 
+// Whose fonts the game loads: the mod in use, or with English (or any of the
+// game's languages) the first mod with fonts all the same - they hold the
+// game's letters and the mod's, so names in other alphabets (the music
+// folder's songs) read as they are.
+const Mod* FontMod() {
+  const auto has_fonts = [](const Mod* mod) {
+    return mod && (!mod->Get("FontBig").empty() || !mod->Get("FontSmall").empty() ||
+                   !mod->Get("FontBigDistressed").empty() || !mod->Get("FontDigital").empty());
+  };
+  if (const Mod* active = ActiveLocalization(); has_fonts(active)) return active;
+  for (const Mod& mod : Localizations()) {
+    if (has_fonts(&mod)) return &mod;
+  }
+  return nullptr;
+}
+
 void PrepareAtStart() {
-  const Mod* mod = ActiveLocalization();
+  const Mod* mod = FontMod();
   if (!mod) return;
   {
     // The characters its text uses, for a TTF to draw.
@@ -283,7 +299,9 @@ const std::vector<Mod>& Localizations() {
 const Mod* ActiveLocalization() {
   const auto& mods = Localizations();
   if (mods.empty()) return nullptr;
-  const std::string chosen = settings::ConfString("locale_mod", "\x01");
+  // language names it - its folder - as it names a language of the game's by
+  // number; without a language at all, the first found.
+  const std::string chosen = settings::ConfString("language", "\x01");
   if (chosen == "\x01") return &mods.front();
   for (const Mod& mod : mods) {
     if (mod.folder == chosen) return &mod;
@@ -329,9 +347,8 @@ REX_HOOK_RAW(sub_8210E1F0) {
   };
   static constexpr GameFont kFonts[] = {
       {0x82011A80, 24}, {0x82011A64, 28}, {0x82011A40, 36}, {0x82011A24, 32}};
-  static const xerenge::mods::Mod* mod = xerenge::mods::ActiveLocalization();
   for (const GameFont& font : kFonts) {
-    if (!mod || ctx.r4.u32 != font.path) continue;
+    if (ctx.r4.u32 != font.path) continue;
     // Made at the start (PrepareAtStart), before the game's files were
     // mounted: they are listed then, and a file made later is not found.
     const char* game_file = reinterpret_cast<const char*>(xerenge::GuestPointer(base, font.path));
@@ -374,6 +391,14 @@ bool CanShowLive(const Mod* mod) {
   const bool has_fonts = !mod->Get("FontBig").empty() || !mod->Get("FontSmall").empty() ||
                          !mod->Get("FontBigDistressed").empty() || !mod->Get("FontDigital").empty();
   return !has_fonts || g_fonts_mod == mod;
+}
+
+}  // namespace xerenge::mods
+
+namespace xerenge::mods {
+
+bool FontsHaveModLetters() {
+  return g_fonts_mod != nullptr;
 }
 
 }  // namespace xerenge::mods

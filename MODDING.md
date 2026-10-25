@@ -52,14 +52,17 @@ FontSmall = Small.fnt
 ### Turning it on
 
 Every localisation mod found appears in **Settings > LANGUAGE** after the
-game's own languages, under its `Name`; choosing it takes effect after the
-restart the game offers. It is written to `xerenge.conf` as
-`locale_mod = <the mod's folder>`. Without a `locale_mod` line at all, the first
-mod found (by folder name) is used; `locale_mod =` with nothing after it turns
-mods off.
+game's own languages, under its `Name`. It is written to `xerenge.conf` as
+`language = <the mod's folder>`, where a language of the game's is a number;
+without a `language` line at all, the first mod found (by folder name) is used.
 
-The game's language stays whatever was chosen before: the mod's text replaces
-those strings, and any string the mod does not have keeps that language's.
+Under a mod the game runs in English: any string the mod does not have reads
+in English. Switching between the mod and English takes effect at once;
+another language of the game's, after the restart the game offers.
+
+A mod's fonts are loaded whatever the language, as long as a mod with fonts is
+there: they hold the game's letters as well as the mod's, so names in the
+mod's alphabet - your own music's, for one - read as they are in English too.
 
 ### The text file
 
@@ -173,7 +176,8 @@ Not a mod, but close: the songs of a `music` folder (beside the game, or
 Details > Song Manager**, LT. MP3 and WMA; the names come from the files' tags
 (or from `Artist - Title.mp3`). With a localisation mod whose fonts have the
 letters, the names are shown as they are; without one, Cyrillic in them is
-written in Latin letters.
+written in Latin letters. Which list is chosen is kept in `xerenge.conf` as
+`music_source` (`custom` or `eatrax`), so a restart plays the same one.
 
 ### Sharing a mod
 

@@ -31,8 +31,8 @@ struct Mod {
 // The localisation mods found, by folder name.
 const std::vector<Mod>& Localizations();
 
-// The one in use: locale_mod in xerenge.conf names it (empty: none); without
-// that key, the first found.
+// The one in use: language in xerenge.conf names it by its folder, as it names
+// one of the game's languages by number; without a language, the first found.
 const Mod* ActiveLocalization();
 
 // The localisation mod's text for a string key (without its $), in guest
@@ -48,5 +48,8 @@ void PrepareAtStart();
 // must be the ones the game loaded at the start.
 void SetLive(const Mod* mod);
 bool CanShowLive(const Mod* mod);
+// Whether the game's fonts are a mod's (FontMod: loaded with any language
+// once a mod has fonts), which hold its letters as well as the game's.
+bool FontsHaveModLetters();
 
 }  // namespace xerenge::mods
