@@ -672,7 +672,7 @@ void PlumeGraphicsSystem::NoteGuestDraw(uint32_t primitive_type, uint32_t index_
   auto& counter = substantial ? d3d_big_draw_log_count_ : d3d_draw_log_count_;
   const uint32_t n = counter.fetch_add(1);
   if (n < 8 || (n % 20000) == 0) {
-    REXLOG_INFO("plume: draw from Direct3D prim={} indices={} vb={:08X}+{} ib={:08X} "
+    REXLOG_DEBUG("plume: draw from Direct3D prim={} indices={} vb={:08X}+{} ib={:08X} "
                 "vs={:016X} ps={:016X}",
                 primitive_type, index_count, buffers.vertex_buffer, buffers.vertex_stride,
                 buffers.index_buffer, active_vs_hash_, active_ps_hash_);
@@ -1042,7 +1042,7 @@ void PlumeGraphicsSystem::PublishDrawSnapshot(uint32_t prim_type, uint32_t sourc
     d3d_snapshots_seen_.fetch_add(1, std::memory_order_relaxed);
     const uint32_t n = d3d_big_draw_log_count_.fetch_add(1);
     if (n < 8 || (n % 20000) == 0) {
-      REXLOG_INFO("plume: draw joined: indices={} vb={:08X}+{} ib={:08X} vs={:016X} ps={:016X}",
+      REXLOG_DEBUG("plume: draw joined: indices={} vb={:08X}+{} ib={:08X} vs={:016X} ps={:016X}",
                   num_indices, buffers.vertex_buffer, buffers.vertex_stride,
                   buffers.index_buffer, snap.vs_hash, snap.ps_hash);
     }
@@ -2953,7 +2953,7 @@ void PlumeGraphicsSystem::PublishGuestGpuProgress() {
     const uint32_t n = progress_state_log_count_.fetch_add(1);
     if ((n % 600) == 0) {
       const uint32_t after = rex::memory::load_and_swap<uint32_t>(host);
-      REXLOG_INFO("plume: progress word now {:08X}, title has submitted {:08X} (short by {})",
+      REXLOG_DEBUG("plume: progress word now {:08X}, title has submitted {:08X} (short by {})",
                   after, submitted, submitted - after);
     }
   }

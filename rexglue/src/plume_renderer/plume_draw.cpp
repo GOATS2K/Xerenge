@@ -380,11 +380,13 @@ bool TranscodeBcToEtc2Uncached(rex::graphics::xenos::TextureFormat base_fmt,
     }
   };
   // Bands of block rows on the worker threads once a texture is big enough
-  // for it to pay (256x256 and up).
-  constexpr uint32_t kBandRows = 16;
+  // for it to pay (64x64 and up): a track or a menu loading brings hundreds
+  // of small ones in a frame, which one at a time on one thread stalled it for
+  // up to a second on a phone (GitHub #32).
+  constexpr uint32_t kBandRows = 4;
   const uint32_t bands = (block_h + kBandRows - 1) / kBandRows;
   const auto run_bands = [&](const std::function<void(uint32_t, uint32_t)>& band) {
-    if (bands <= 1 || block_w * block_h < 4096) {
+    if (bands <= 1 || block_w * block_h < 256) {
       band(0, block_h);
       return;
     }
@@ -2196,7 +2198,7 @@ bool CaptureGuestVideoFrame(GuestDrawSnapshot* snap, memory::Memory* memory) {
                                      u_fetch.dword_0, u_fetch.dword_1, u_fetch.dword_2, u_fetch.dword_3, u_fetch.dword_4, u_fetch.dword_5};
     if (std::memcmp(last_dwords, now_dwords, sizeof(now_dwords)) != 0) {
       std::memcpy(last_dwords, now_dwords, sizeof(now_dwords));
-      REXLOG_INFO("plume: video fetch constants changed: Y {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}  U {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
+      REXLOG_DEBUG("plume: video fetch constants changed: Y {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}  U {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}",
                   now_dwords[0], now_dwords[1], now_dwords[2], now_dwords[3], now_dwords[4], now_dwords[5],
                   now_dwords[6], now_dwords[7], now_dwords[8], now_dwords[9], now_dwords[10], now_dwords[11]);
     }
@@ -2316,7 +2318,7 @@ bool CaptureGuestVideoFrame(GuestDrawSnapshot* snap, memory::Memory* memory) {
                          u_plane.row_bytes ^ (packed_uv ? 1u : 0u) ^ (TextureKey(y_fetch) << 1);
   if (shape != last_shape) {
     last_shape = shape;
-    REXLOG_INFO("plume: capture yuv Y={}x{} (row {}) U={}x{} (row {}) V={}x{} (row {}) packed={} "
+    REXLOG_DEBUG("plume: capture yuv Y={}x{} (row {}) U={}x{} (row {}) V={}x{} (row {}) packed={} "
                 "Y at {:08X}",
                 y_plane.width, y_plane.height, y_plane.row_bytes, u_plane.width, u_plane.height,
                 u_plane.row_bytes, v_plane.width, v_plane.height, v_plane.row_bytes,
@@ -3093,7 +3095,7 @@ void PlumeDrawContext::RecordShaderCoverage(uint64_t vs_hash, uint64_t ps_hash) 
     }
     return n;
   };
-  REXLOG_INFO(
+  REXLOG_DEBUG(
       "plume: shader coverage - VS {}/{} distinct, PS {}/{} distinct, "
       "draws with both {}/{} ({}%)",
       covered(vs_coverage_), vs_coverage_.size(), covered(ps_coverage_), ps_coverage_.size(),
@@ -7644,7 +7646,7 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
     const uint64_t now = CoarseMs();
     uint64_t was = last_ms.load(std::memory_order_relaxed);
     if (now - was >= 3000 && last_ms.compare_exchange_strong(was, now)) {
-      REXLOG_INFO("plume: encode fate: entered {} (Direct3D {}), invalid {}, buffers full {}, "
+      REXLOG_DEBUG("plume: encode fate: entered {} (Direct3D {}), invalid {}, buffers full {}, "
                   "no pipeline {}, no vertices {}, drawn {} (Direct3D {})",
                   fate.entered.load(), fate.d3d_entered.load(), fate.invalid.load(),
                   fate.full.load(), fate.no_pipeline.load(), fate.no_vertices.load(),
@@ -7966,7 +7968,7 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
       const uint64_t now = CoarseMs();
       uint64_t was = last_ms.load(std::memory_order_relaxed);
       if (now - was >= 2000 && last_ms.compare_exchange_strong(was, now)) {
-        REXLOG_INFO("plume: Direct3D draws: {} with the title's shaders, {} passthrough",
+        REXLOG_DEBUG("plume: Direct3D draws: {} with the title's shaders, {} passthrough",
                     real_d3d.load(std::memory_order_relaxed),
                     passthrough_d3d.load(std::memory_order_relaxed));
       }
@@ -8056,7 +8058,7 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
                       kind_draws[3].load(), kind_ns[3].load() / 1000000, kind_verts[3].load(),
                       kind_draws[4].load(), kind_ns[4].load() / 1000000, kind_verts[4].load());
         }
-        REXLOG_INFO("plume: unpacking vertices took {} ms for {} vertices (setup+clear {} ms, "
+        REXLOG_DEBUG("plume: unpacking vertices took {} ms for {} vertices (setup+clear {} ms, "
                     "vertex loop {} ms, after {} ms, copy out {} ms)",
                     total_us.load(std::memory_order_relaxed) / 1000,
                     verts.load(std::memory_order_relaxed), g_fill_ns[0].load() / 1000000,
@@ -8909,7 +8911,7 @@ void PlumeDrawContext::EncodeDraws(plume::RenderCommandList* list,
         static std::atomic<uint64_t> copies{0};
         const uint64_t n = copies.fetch_add(1, std::memory_order_relaxed);
         if (n < 8 || (n % 500) == 0) {
-          REXLOG_INFO("plume: copy #{} made in draw order -> {:08X} ({}x{})", n, snap.resolve_dest,
+          REXLOG_DEBUG("plume: copy #{} made in draw order -> {:08X} ({}x{})", n, snap.resolve_dest,
                       snap.resolve_width, snap.resolve_height);
         }
       }

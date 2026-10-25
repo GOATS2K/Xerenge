@@ -32,7 +32,7 @@ constexpr uint32_t kMagic = 0x32434558;  // "XEC2"
 // What this run keeps in memory; past it, the oldest go (the files stay). Less
 // on a phone, whose memory the game itself needs and whose storage is fast.
 #ifdef __ANDROID__
-constexpr size_t kMemoryLimit = size_t(96) << 20;
+constexpr size_t kMemoryLimit = size_t(48) << 20;
 #else
 constexpr size_t kMemoryLimit = size_t(256) << 20;
 #endif
