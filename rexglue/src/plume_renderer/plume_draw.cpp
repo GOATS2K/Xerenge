@@ -36,6 +36,7 @@
 #include <plume_render_interface_builders.h>
 #include <plume_vulkan.h>
 
+#include <rex/cvar.h>
 #include <rex/graphics/format/ucode.h>
 #include <rex/graphics/pipeline/texture/conversion.h>
 #include <rex/graphics/pipeline/texture/info.h>
@@ -65,9 +66,16 @@
 #include <fstream>
 #if defined(__ANDROID__) || defined(__linux__)
 #include <zlib.h>
+#if defined(__ANDROID__) || defined(__linux__)
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #endif
 #include <cstdlib>
 #include <ctime>
+
+REXCVAR_DECLARE(std::string, game_data_root);
 
 namespace rex::plume_renderer {
 
@@ -323,6 +331,11 @@ bool DecodeCompressedForDump(rex::graphics::xenos::TextureFormat base_fmt,
 // ETC2 RGBA (EAC alpha) otherwise. *alpha comes in as the format chosen for the
 // texture's base level, or as -1 to choose it here: from the format, or for
 // BC1 from whether any texel is transparent. row_texels is the padded width.
+// Set on the thread that prepares the disc's textures in the background
+// (PrepareEtc2AtFirstStart): its re-encodes keep to that thread, leaving the
+// worker threads to the frames.
+thread_local bool g_transcode_serial = false;
+
 bool TranscodeBcToEtc2Uncached(rex::graphics::xenos::TextureFormat base_fmt,
                        const std::vector<uint8_t>& blocks, uint32_t block_row_bytes,
                        uint32_t width, uint32_t height, int* alpha, std::vector<uint8_t>* out,
@@ -386,7 +399,7 @@ bool TranscodeBcToEtc2Uncached(rex::graphics::xenos::TextureFormat base_fmt,
   constexpr uint32_t kBandRows = 4;
   const uint32_t bands = (block_h + kBandRows - 1) / kBandRows;
   const auto run_bands = [&](const std::function<void(uint32_t, uint32_t)>& band) {
-    if (bands <= 1 || block_w * block_h < 256) {
+    if (g_transcode_serial || bands <= 1 || block_w * block_h < 256) {
       band(0, block_h);
       return;
     }
@@ -425,7 +438,7 @@ bool TranscodeBcToEtc2(rex::graphics::xenos::TextureFormat base_fmt,
   Etc2Cache& cache = Etc2Cache::Instance();
   const uint64_t key = Etc2Cache::Key(uint32_t(base_fmt), blocks, block_row_bytes, width, height,
                                       *alpha);
-  if (cache.Find(key, alpha, out, row_texels)) {
+  if (cache.Find(key, alpha, out, row_texels, /*remember=*/!g_transcode_serial)) {
     return true;
   }
   const auto start = std::chrono::steady_clock::now();
@@ -435,7 +448,7 @@ bool TranscodeBcToEtc2(rex::graphics::xenos::TextureFormat base_fmt,
   }
   cache.NoteMiss(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
-  cache.Store(key, *alpha, *out, *row_texels);
+  cache.Store(key, *alpha, *out, *row_texels, /*remember=*/!g_transcode_serial);
   return true;
 }
 
@@ -9223,6 +9236,62 @@ extern "C" __attribute__((visibility("default"))) int xerenge_prepare_etc2(
               std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
   return int(textures);
 }
+
+// The same at the first start on a GPU without BC (a Mali), where the
+// installer did not do it: on a thread of its own at the lowest priority,
+// re-encoding there alone, so the frames keep the worker threads; only the
+// files that hold textures (not the videos, music or sounds). Done once - a
+// file in the cache says so - and XERENGE_NO_ETC2_PREPARE=1 turns it off.
+void PlumeDrawContext::PrepareEtc2AtFirstStart(const std::filesystem::path& cache_root) {
+  if (bc_supported_ || !etc2_supported_ || cache_root.empty() ||
+      std::getenv("XERENGE_NO_ETC2_PREPARE") != nullptr) {
+    return;
+  }
+  const std::string game_dir = REXCVAR_GET(game_data_root);
+  const std::filesystem::path done = cache_root / "etc2" / "prepared.v1";
+  std::error_code error;
+  if (game_dir.empty() || std::filesystem::exists(done, error)) {
+    return;
+  }
+  std::thread([game_dir, done] {
+    // The lowest priority for this thread alone (Linux keeps it a thread's).
+    setpriority(PRIO_PROCESS, id_t(syscall(SYS_gettid)), 19);
+    g_transcode_serial = true;
+    std::vector<std::filesystem::path> files;
+    std::error_code error;
+    for (auto it = std::filesystem::recursive_directory_iterator(game_dir, error);
+         !error && it != std::filesystem::recursive_directory_iterator(); it.increment(error)) {
+      std::string ext = it->path().extension().string();
+      for (auto& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
+      if (it->is_regular_file(error) && it->file_size(error) >= 0x2000 &&
+          it->file_size(error) < (size_t(512) << 20) &&
+          (ext == ".txd" || ext == ".bin" || ext == ".dat" || ext == ".btv" || ext == ".bgv")) {
+        files.push_back(it->path());
+      }
+    }
+    REXLOG_INFO("plume: ETC2 - preparing the textures of {} file(s) in the background", files.size());
+    const auto start = std::chrono::steady_clock::now();
+    uint32_t textures = 0;
+    for (const auto& file : files) {
+      std::ifstream in(file, std::ios::binary);
+      std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});
+      if (bytes.size() > 2 && bytes[0] == 0x78 && ((bytes[0] << 8) | bytes[1]) % 31 == 0) {
+        std::vector<uint8_t> inflated;
+        if (InflateAll(bytes, &inflated)) {
+          bytes = std::move(inflated);
+        }
+      }
+      textures += PrepareEtc2In(bytes);
+      Etc2Cache::Instance().WaitWritten(64);  // as fast as the storage writes, no faster
+    }
+    Etc2Cache::Instance().WaitWritten(0);
+    std::ofstream(done) << textures << "\n";
+    REXLOG_INFO("plume: ETC2 - {} texture(s) prepared in the background in {:.1f} s", textures,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+  }).detach();
+}
+#else
+void PlumeDrawContext::PrepareEtc2AtFirstStart(const std::filesystem::path&) {}
 #endif
 
 }  // namespace rex::plume_renderer

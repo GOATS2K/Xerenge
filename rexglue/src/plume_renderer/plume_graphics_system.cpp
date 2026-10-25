@@ -2548,6 +2548,7 @@ void PlumeGraphicsSystem::InitializeShaderStorage(const std::filesystem::path& c
   // The pipelines met in earlier runs, made ahead (PlumeDrawContext::SetPipelineList).
   if (draw_context_ && !cache_root.empty()) {
     draw_context_->SetPipelineList((cache_root / "plume_pipelines.txt").string());
+    draw_context_->PrepareEtc2AtFirstStart(cache_root);
   }
   (void)blocking;
 

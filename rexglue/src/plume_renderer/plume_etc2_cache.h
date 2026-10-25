@@ -27,8 +27,14 @@ class Etc2Cache {
   static uint64_t Key(uint32_t format, const std::vector<uint8_t>& blocks, uint32_t row_bytes,
                       uint32_t width, uint32_t height, int alpha_in);
 
-  bool Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32_t* row_texels);
-  void Store(uint64_t key, int alpha, const std::vector<uint8_t>& data, uint32_t row_texels);
+  bool Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32_t* row_texels,
+            bool remember = true);
+  // remember: kept in memory too (not for what is prepared ahead, which would
+  // push out what the game is drawing).
+  void Store(uint64_t key, int alpha, const std::vector<uint8_t>& data, uint32_t row_texels,
+             bool remember = true);
+  // Until no more than `pending` entries wait to be written.
+  void WaitWritten(size_t pending);
 
   // Counts so far, for the log.
   void NoteMiss(double milliseconds);

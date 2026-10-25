@@ -202,7 +202,8 @@ uint64_t Etc2Cache::Key(uint32_t format, const std::vector<uint8_t>& blocks, uin
   return XXH3_64bits_withSeed(blocks.data(), blocks.size(), shape ^ kVersion);
 }
 
-bool Etc2Cache::Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32_t* row_texels) {
+bool Etc2Cache::Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32_t* row_texels,
+                     bool remember) {
   State& s = S();
   if (!s.enabled) {
     return false;
@@ -222,7 +223,9 @@ bool Etc2Cache::Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32
     entry = ReadFile(FileFor(dir, key));
     if (entry) {
       std::lock_guard lock(s.mutex);
-      Remember(s, key, entry);
+      if (remember) {
+        Remember(s, key, entry);
+      }
       ++s.disk_hits;
       MaybeLog(s);
     }
@@ -237,7 +240,7 @@ bool Etc2Cache::Find(uint64_t key, int* alpha, std::vector<uint8_t>* out, uint32
 }
 
 void Etc2Cache::Store(uint64_t key, int alpha, const std::vector<uint8_t>& data,
-                      uint32_t row_texels) {
+                      uint32_t row_texels, bool remember) {
   State& s = S();
   if (!s.enabled) {
     return;
@@ -247,7 +250,9 @@ void Etc2Cache::Store(uint64_t key, int alpha, const std::vector<uint8_t>& data,
   entry->row_texels = row_texels;
   entry->data = data;
   std::lock_guard lock(s.mutex);
-  Remember(s, key, entry);
+  if (remember) {
+    Remember(s, key, entry);
+  }
   if (!s.dir.empty()) {
     s.pending.emplace_back(key, std::move(entry));
     s.wake.notify_one();
@@ -279,6 +284,23 @@ void Etc2Cache::NoteMiss(double milliseconds) {
   ++s.misses;
   s.miss_ms += milliseconds;
   MaybeLog(s);
+}
+
+}  // namespace rex::plume_renderer
+
+namespace rex::plume_renderer {
+
+void Etc2Cache::WaitWritten(size_t pending) {
+  State& s = S();
+  for (;;) {
+    {
+      std::lock_guard lock(s.mutex);
+      if (s.pending.size() <= pending || s.dir.empty()) {
+        return;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
 }
 
 }  // namespace rex::plume_renderer

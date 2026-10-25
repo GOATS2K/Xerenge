@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <filesystem>
 #include <unordered_set>
 
 #include <array>
@@ -509,6 +510,9 @@ class PlumeDrawContext {
   // added to it, and the ones in it are made ahead, a few a frame, before they
   // are drawn with - a pipeline first met mid-race stalled the frame it came in.
   void SetPipelineList(const std::string& path);
+  // On a GPU without BC, the first start: the disc's DXT textures re-encoded as
+  // ETC2 into the cache under cache_root, on a background thread, once.
+  void PrepareEtc2AtFirstStart(const std::filesystem::path& cache_root);
 
  private:
 
