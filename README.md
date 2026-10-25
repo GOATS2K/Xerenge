@@ -189,6 +189,12 @@ Game images, decrypted data, extracted assets, build directories and generated
 recompiler output are deliberately excluded, here and in the forks. The ReXGlue
 SDK is a separate checkout rather than vendored.
 
+## Mods
+
+Translations into languages the game was never released in - with fonts of
+their own, drawn to look like the game's - and your own music in place of EA
+Trax: [`MODDING.md`](MODDING.md) has how.
+
 ## Reporting a problem
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first: a report needs the log, the

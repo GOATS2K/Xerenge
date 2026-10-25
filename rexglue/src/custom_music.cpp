@@ -37,6 +37,7 @@
 
 #include "custom_music.h"
 #include "guest_memory.h"
+#include "mods.h"
 #include "xerenge_settings.h"
 
 extern "C" void __imp__sub_821EBDF0(PPCContext& __restrict, uint8_t*);
@@ -274,10 +275,23 @@ Tags ReadTags(const std::filesystem::path& file) {
   return Lower(file.extension().string()) == ".wma" ? ReadWmaTags(data) : ReadMp3Tags(data);
 }
 
-// The game's fonts hold Latin-1 only (a table of 256 glyphs in
-// language/fonts/*.bin): Cyrillic is written in Latin letters, the rest of
-// what they lack as '?'.
+// The game's fonts hold Latin-1 only (language/fonts/*.bin): Cyrillic is
+// written in Latin letters, the rest of what they lack as '?' - unless a
+// localisation mod's fonts are in use.
+// A localisation mod's fonts are made with Cyrillic (mods.cpp): with one,
+// the names go as they are.
+bool FontsHaveCyrillic() {
+  const xerenge::mods::Mod* mod = xerenge::mods::ActiveLocalization();
+  return mod && (!mod->Get("FontBig").empty() || !mod->Get("FontSmall").empty() ||
+                 !mod->Get("FontBigDistressed").empty());
+}
+
 std::string ForGameFont(const std::vector<uint32_t>& points) {
+  if (FontsHaveCyrillic()) {
+    std::string out;
+    for (uint32_t point : points) PutUtf8(out, point);
+    return out;
+  }
   static const char* const kCyrillic[64] = {
       "A", "B", "V", "G", "D", "E", "Zh", "Z", "I", "Y", "K", "L", "M", "N", "O", "P",
       "R", "S", "T", "U", "F", "Kh", "Ts", "Ch", "Sh", "Shch", "", "Y", "", "E", "Yu", "Ya",
