@@ -4,7 +4,7 @@
 //
 //   aptdump <package> [name filter]
 //
-// The package holds the movies as pairs: an "Apt Data:7" blob (the movie) and
+// The package holds the movies as pairs: an "Apt Data:7" (or :6) blob (the movie) and
 // an "Apt constant file" (its constants, and where the movie's root character
 // lies in the data). Both big-endian, every offset relative to its own blob.
 // The layout is EA's Apt as OpenSAGE reads it for C&C 3 (little-endian there):
@@ -365,6 +365,12 @@ void DumpMovie(const Movie& movie) {
       case 4:
         std::printf("   character %u: button\n", i);
         break;
+      case 3: {
+        std::printf("   character %u: font", i);
+        for (uint32_t k = 4; k < 40; k += 4) std::printf(" %08X", b.U32(ch + k));
+        std::printf("\n");
+        break;
+      }
       default:
         std::printf("   character %u: type %u\n", i, type);
     }
@@ -398,12 +404,13 @@ int main(int argc, char** argv) {
   };
   size_t at = 0;
   int count = 0;
-  while ((at = find("Apt Data:7", at)) < package.size()) {
+  // Data:7 for most, Data:6 for a few (the button icons and their textures).
+  while ((at = find("Apt Data:", at)) < package.size()) {
     const size_t constants = find("Apt constant file", at);
     if (constants >= package.size()) {
       break;
     }
-    const size_t next = find("Apt Data:7", at + 1);
+    const size_t next = find("Apt Data:", at + 1);
     Movie movie;
     movie.apt_offset = at;
     movie.constants_offset = constants;

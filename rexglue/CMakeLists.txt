@@ -20,6 +20,9 @@ set(BURNOUT_SOURCES
     src/xerenge_settings.cpp
     src/xerenge_restart.cpp
     src/music_trace.cpp
+    src/custom_music.cpp
+    src/game_font.cpp
+    src/mods.cpp
     src/movie_frames.cpp
     src/tint_trace.cpp
     src/render_patches.cpp
@@ -315,7 +318,7 @@ if(NOT EXISTS "${TOAST_FONT_CPP}" OR "${TOAST_FONT}" IS_NEWER_THAN "${TOAST_FONT
         "extern const size_t kToastFontSize = sizeof(kToastFont);\n")
 endif()
 target_sources(burnout PRIVATE src/achievement_toast.cpp "${TOAST_FONT_CPP}")
-target_include_directories(burnout PRIVATE "${REXSDK_DIR}/thirdparty/stb")
+target_include_directories(burnout PRIVATE "${REXSDK_DIR}/thirdparty/stb" "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb")
 
 # plume is built above and linked only into librexgpu-plume.so (see
 # src/plume_renderer/). The host executable never links plume directly.

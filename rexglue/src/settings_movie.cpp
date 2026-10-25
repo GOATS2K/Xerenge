@@ -36,6 +36,7 @@
 #include <rex/ppc.h>
 #include <rex/system/kernel_state.h>
 
+#include "custom_music.h"
 #include "guest_memory.h"
 #include "xerenge_settings.h"
 
@@ -1366,6 +1367,131 @@ bool RebuildMainMenu(const uint8_t* data, size_t data_size, const uint8_t* const
   return true;
 }
 
+// Every PushData's and ConstantPool's list in the movie: where a constant
+// stands in one, the other in its place.
+void SwapConstant(Blob& b, uint32_t from, uint32_t to) {
+  const uint32_t size = uint32_t(b.bytes.size());
+  for (uint32_t op = 0; op + 12 < size; ++op) {
+    if (b.bytes[op] != 0x96 && b.bytes[op] != 0x88) {
+      continue;
+    }
+    const uint32_t at = (op + 4) & ~3u;
+    bool padded = true;
+    for (uint32_t p = op + 1; p < at; ++p) {
+      padded = padded && b.bytes[p] == 0;
+    }
+    const uint32_t count = b.U32(at), list = b.U32(at + 4);
+    if (!padded || count == 0 || count > 256 || (list & 3) || list <= at || list + count * 4 > size) {
+      continue;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+      if (b.U32(list + i * 4) == from) {
+        b.Set32(list + i * 4, to);
+      }
+    }
+  }
+}
+
+// The aligned operand of the op at `op`, and a PushData's (count, list) there.
+uint32_t Operand(uint32_t op) { return (op + 4) & ~3u; }
+
+bool FixPreviewFallThrough(Blob& b, Constants& c) {
+  const uint32_t size = uint32_t(b.bytes.size());
+  // The branch into the check: its target right after a CallMethod and Pop
+  // (Preview Track's call), and the check - a PushData of true, then its
+  // BranchIfTrue past the switch's call - within the next few dozen bytes.
+  for (uint32_t op = 0; op + 8 < size; ++op) {
+    if (b.bytes[op] != 0x9D) {
+      continue;
+    }
+    const uint32_t operand = Operand(op);
+    const uint32_t check = operand + 4 + b.U32(operand);
+    if (check < 2 || check + 0x40 > size || b.bytes[check - 2] != 0x52 || b.bytes[check - 1] != 0x17) {
+      continue;
+    }
+    // Equals2, Not, BranchIfTrue; the PushData just before them pushes true.
+    uint32_t push_true = 0, skip = 0;
+    for (uint32_t at = check + 12; at + 3 < check + 0x40; ++at) {
+      if (b.bytes[at] == 0x49 && b.bytes[at + 1] == 0x12 && b.bytes[at + 2] == 0x9D) {
+        for (uint32_t push = at - 12; push < at; ++push) {
+          if (b.bytes[push] == 0x96 && Operand(push) + 8 == at && b.U32(Operand(push)) == 1) {
+            push_true = b.U32(Operand(push) + 4);
+          }
+        }
+        skip = at + 2;
+        break;
+      }
+    }
+    if (!push_true || !skip) {
+      continue;
+    }
+    // The switch's branch to the call itself; the check, which only the fall
+    // through now comes to, asks for the opposite, so it skips the call.
+    b.Set32(operand, Operand(skip) + 4 - (operand + 4));
+    b.Set32(push_true, c.Bool(false));
+    return true;
+  }
+  return false;
+}
+
+// Driver Details > Song Manager (custom_music.cpp): its playlist switch shown
+// (by HasCustomPlaylists) on LT, and the playing order on RT in place of LT.
+// What the screen's input handler compares the key with, INPUTCODE.CYCLESONG
+// (LT) and INPUTCODE.XBUTTON, becomes RTRIGGER and LTRIGGER; the icons follow
+// (left1 is LT's, right1 RT's); the switch's word (PLAYLIST) is
+// left out.
+bool RebuildSongManager(const uint8_t* data, size_t data_size, const uint8_t* constants,
+                        size_t constants_size, Blob& out_data, Blob& out_constants) {
+  Constants c;
+  if (!c.Read(constants, constants_size)) {
+    return false;
+  }
+  Blob& b = out_data;
+  b.bytes.assign(data, data + data_size);
+  const uint32_t root = c.root;
+  if (b.U32(root) != 9 || b.U32(root + 4) != 0x09876543) {
+    return false;
+  }
+  SwapConstant(b, c.String("CYCLESONG"), c.String("RTRIGGER"));
+  SwapConstant(b, c.String("XBUTTON"), c.String("LTRIGGER"));
+  SwapConstant(b, c.String("left1"), c.String("right1"));
+  SwapConstant(b, c.String("X-button"), c.String("left1"));
+  // The input handler's A (Preview Track) falls through into the switch's
+  // code (no branch after it - unseen on a console, where the switch never
+  // showed): A switched the list. The switch's own branch is sent past the
+  // check that begins that code, and the check made one that always fails.
+  if (!FixPreviewFallThrough(b, c)) {
+    REXLOG_WARN("menu: song manager movie: Preview Track's fall-through not found");
+  }
+  // The natives as the game names them: the movie asks for HasCustomPlayLists
+  // and SetNextPlayList, which no one answers, and the switch never showed.
+  SwapConstant(b, c.String("HasCustomPlayLists"), c.String("HasCustomPlaylists"));
+  SwapConstant(b, c.String("SetNextPlayList"), c.String("SetNextPlaylist"));
+  // The switch's word, PLAYLIST (, which the online
+  // menus share): a key of ours in its place, which answers spaces as wide -
+  // the icon alone, where the movie's layout by the word's width puts it.
+  bool blanked = false;
+  for (auto& entry : c.entries) {
+    if (entry.type == 1 && entry.text == "$OnlinePlayListSelectTitle") {
+      entry.text = "$XerengeBlankWord";
+      blanked = true;
+    }
+  }
+  const char* const kWord = "$OnlinePlayListSelectTitle";
+  for (size_t at = 0; at + std::strlen(kWord) < b.bytes.size(); ++at) {
+    if (std::memcmp(&b.bytes[at], kWord, std::strlen(kWord) + 1) == 0) {
+      std::memcpy(&b.bytes[at], "$XerengeBlankWord", 18);
+      blanked = true;
+    }
+  }
+  if (!blanked) {
+    REXLOG_WARN("menu: song manager movie: its PLAYLIST key not found");
+  }
+  b.Align(16);
+  out_constants = c.Write();
+  return true;
+}
+
 // The constant file's size: up to the end of its last string.
 size_t ConstantsSize(const uint8_t* raw) {
   Blob header;
@@ -1409,6 +1535,20 @@ REX_HOOK_RAW(sub_824277A0) {
         ctx.r4.u64 = ToGuest(base, new_data);
         ctx.r5.u64 = ToGuest(base, new_constants);
         REXLOG_INFO("menu: main menu movie rebuilt");
+      }
+    }
+    // Driver Details > Song Manager: LT switches to the music folder, RT the order.
+    const uint8_t* song_constants = xerenge::GuestPointer(base, constants);
+    if (!settings && !pause && Holds(song_constants, ConstantsSize(song_constants), "togglePlayOrder") &&
+        Holds(song_constants, ConstantsSize(song_constants), "changeCustomPlaylist")) {
+      const uint8_t* raw_constants = song_constants;
+      Blob new_data, new_constants;
+      if (RebuildSongManager(raw_data, data_size, raw_constants, ConstantsSize(raw_constants), new_data,
+                             new_constants)) {
+        ctx.r4.u64 = ToGuest(base, new_data);
+        ctx.r5.u64 = ToGuest(base, new_constants);
+        REXLOG_INFO("menu: song manager movie rebuilt");
+        xerenge::music::Rescan(base);
       }
     }
     // Driver Details > Stats's movie, asked for by that button: the achievements.

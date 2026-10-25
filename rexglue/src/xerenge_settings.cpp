@@ -3,9 +3,13 @@
 // installer writes and the launcher reads at every start - behind them.
 #include "xerenge_settings.h"
 
+#include "mods.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <deque>
+#include <iterator>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -141,10 +145,44 @@ std::vector<Option> OffOn() { return {{"OFF", "false"}, {"ON", "true"}}; }
 const std::vector<Setting>& Settings() {
   static const std::vector<Setting> settings = [] {
     std::vector<Setting> s;
-    s.push_back({1, kMain, "LANGUAGE", "language",
-                 {{"ASK AT START", ""}, {"ENGLISH", "0"}, {"ENGLISH (US)", "1"}, {"ESPANOL", "5"},
-                  {"NEDERLANDS", "10"}, {"SVENSKA", "11"}, {"SUOMI", "12"}},
-                 1});
+    Setting language{1, kMain, "LANGUAGE", "language",
+                     {{"ASK AT START", ""}, {"ENGLISH", "0"}, {"ENGLISH (US)", "1"}, {"ESPANOL", "5"},
+                      {"NEDERLANDS", "10"}, {"SVENSKA", "11"}, {"SUOMI", "12"}},
+                     1};
+    // The localisation mods after the game's languages, by their names; one
+    // chosen is locale_mod (mods.h) over the game's language as it was.
+    const size_t game_languages = language.options.size();
+    static std::deque<std::string> names;
+    for (const auto& mod : mods::Localizations()) {
+      std::string name = mod.Get("Name").empty() ? mod.folder : mod.Get("Name");
+      for (auto& ch : name) ch = char(std::toupper(static_cast<unsigned char>(ch)));
+      names.push_back(name);
+      language.options.push_back({names.back().c_str(), ""});
+    }
+    if (language.options.size() > game_languages) {
+      language.get = [game_languages] {
+        const auto& found = mods::Localizations();
+        if (const mods::Mod* active = mods::ActiveLocalization()) {
+          for (size_t i = 0; i < found.size(); ++i)
+            if (&found[i] == active) return int(game_languages + i);
+        }
+        const std::string value = ConfValue("language", "1");
+        static const char* const kValues[] = {"", "0", "1", "5", "10", "11", "12"};
+        for (size_t i = 0; i < std::size(kValues); ++i)
+          if (value == kValues[i]) return int(i);
+        return 1;
+      };
+      language.set = [game_languages](int option) {
+        static const char* const kValues[] = {"", "0", "1", "5", "10", "11", "12"};
+        if (size_t(option) >= game_languages) {
+          WriteConf("locale_mod", mods::Localizations()[size_t(option) - game_languages].folder);
+        } else {
+          WriteConf("locale_mod", "");
+          WriteConf("language", kValues[option]);
+        }
+      };
+    }
+    s.push_back(language);
 
     s.push_back({10, kGraphics, "KEEP 16:9", "aspect_16_9", OffOn(), 1});
     s.push_back({11, kGraphics, "RENDER RESOLUTION", "render_resolution",
@@ -298,7 +336,7 @@ std::vector<Row> Rows(Page page) {
     return rows;
   }
   for (const Setting& s : Settings()) {
-    if (s.page != page || (g_single_language && s.key && std::string(s.key) == "language")) {
+    if (s.page != page || (g_single_language && s.key && std::string(s.key) == "language" && mods::Localizations().empty())) {
       continue;
     }
     Row row{s.label, {}, s.id};
@@ -411,6 +449,7 @@ bool TakeRestartNeeded() {
 namespace xerenge::settings {
 
 void ApplyAtStart() {
+  mods::PrepareAtStart();
   // Read here as well as by the launcher: a start without it (run.sh, an older
   // launcher) would otherwise still load RenderDoc and show its overlay.
   if (!ConfFlag("renderdoc", true)) {
@@ -431,6 +470,22 @@ void ApplyAtStart() {
     setenv("XERENGE_PROMPTS", prompts.c_str(), 1);
 #endif
   }
+}
+
+}  // namespace xerenge::settings
+
+namespace xerenge::settings {
+
+std::string ConfString(const std::string& key, const std::string& fallback) {
+  return ConfValue(key, fallback);
+}
+
+void SetConfString(const std::string& key, const std::string& value) {
+  WriteConf(key, value);
+}
+
+std::filesystem::path GameFolder() {
+  return ConfPath().parent_path();
 }
 
 }  // namespace xerenge::settings

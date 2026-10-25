@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -55,5 +56,13 @@ std::vector<AchievementRow> AchievementRows();
 
 // What must be known before the renderer starts, from xerenge.conf (RenderDoc).
 void ApplyAtStart();
+
+// xerenge.conf beside the game: a key's value (the fallback without one), and
+// a key written (its line rewritten, or added).
+std::string ConfString(const std::string& key, const std::string& fallback);
+void SetConfString(const std::string& key, const std::string& value);
+// The folder the game's own files are in (game_data_root), and the one above
+// it: the installed game's, where xerenge.conf is.
+std::filesystem::path GameFolder();
 
 }  // namespace xerenge::settings

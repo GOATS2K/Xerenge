@@ -32,6 +32,8 @@
 #include <rex/system/function_dispatcher.h>
 #include <rex/system/kernel_state.h>
 
+#include "custom_music.h"
+#include "mods.h"
 #include "guest_memory.h"
 #include "xerenge_settings.h"
 
@@ -461,6 +463,13 @@ REX_HOOK_RAW(sub_8210FCF8) {
   };
   static uint32_t guest[std::size(kTexts)] = {};
   const char* key = reinterpret_cast<const char*>(xerenge::GuestPointer(base, ctx.r4.u32));
+  // A localisation mod's text first (mods.cpp).
+  if (ctx.r4.u32 >= 0x10000) {
+    if (const uint32_t text = xerenge::mods::Text(base, key)) {
+      ctx.r3.u64 = text;
+      return;
+    }
+  }
   // An achievement's popup: its title and text, as they are now, each in a
   // buffer of its own, written again every time.
   if (ctx.r4.u32 >= 0x10000) {
@@ -482,6 +491,37 @@ REX_HOOK_RAW(sub_8210FCF8) {
       ctx.r3.u64 = buffer;
       return;
     }
+  }
+  // Song Manager's switch, its word (PLAYLIST) made this key (settings_movie.cpp): the
+  // icon alone, the word's width kept (the movie places the icon by it).
+  if (ctx.r4.u32 >= 0x10000 && std::strcmp(key, "XerengeBlankWord") == 0) {
+    static uint32_t blank = 0;
+    if (!blank) {
+      blank = REX_KERNEL_MEMORY()->SystemHeapAlloc(18, 0x10);
+      uint8_t* out = xerenge::GuestPointer(base, blank);
+      for (int c = 0; c < 9; ++c) {
+        out[c * 2] = 0;
+        out[c * 2 + 1] = c < 8 ? ' ' : 0;
+      }
+    }
+    ctx.r3.u64 = blank;
+    return;
+  }
+  // Song Manager's subtitle while the music folder's songs are chosen.
+  if (ctx.r4.u32 >= 0x10000 && std::strcmp(key, "FEDRIVERDETEATRAX") == 0 && xerenge::music::Custom()) {
+    static uint32_t mine = 0;
+    if (!mine) {
+      const char* text = "[MY MUSIC]";
+      const size_t length = std::strlen(text);
+      mine = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(length + 1) * 2, 0x10);
+      uint8_t* out = xerenge::GuestPointer(base, mine);
+      for (size_t c = 0; c <= length; ++c) {
+        out[c * 2] = 0;
+        out[c * 2 + 1] = uint8_t(text[c]);
+      }
+    }
+    ctx.r3.u64 = mine;
+    return;
   }
   for (size_t i = 0; ctx.r4.u32 >= 0x10000 && i < std::size(kTexts); ++i) {
     if (std::strcmp(key, kTexts[i].key) == 0) {
