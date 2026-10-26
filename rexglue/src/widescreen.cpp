@@ -587,8 +587,10 @@ ELEMENT_HOOK(sub_821907B8)  // CB4HUDTrafficAttackBar2dObject::_Render
 ELEMENT_HOOK(sub_8218DDA8)  // CB4HUDText2dObject::_RenderOutline
 ELEMENT_HOOK(sub_8218DF38)  // CB4HUDText2dObject::_RenderColourVerticesOutline
 ELEMENT_HOOK(sub_8218FD58)  // CB4HUDText2dObject::_Render2dGeometryGradientText
-ELEMENT_CENTRED_HOOK(sub_8218EAB0)  // CB4HUDText2dObject::_RenderMessage2
-ELEMENT_CENTRED_HOOK(sub_8218F3C8)  // CB4HUDText2dObject::_RenderMessage3
+// Not CB4HUDText2dObject::_RenderMessage2 and _RenderMessage3 (0x8218EAB0,
+// 0x8218F3C8): a crash's TOTALLED! comes with a tint over the whole screen,
+// and with the batch flushed around it the tint came out solid brown for a
+// frame every few tenths of a second.
 // The border a crash or a takedown is framed in: black bars over the top and
 // bottom of the whole screen, not of its middle.
 ELEMENT_FILL_HOOK(sub_82187BE0)  // CB4HUDBorder2dObject::_Render
