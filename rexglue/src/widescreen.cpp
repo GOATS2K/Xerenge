@@ -572,6 +572,23 @@ ELEMENT_HOOK(sub_82197A88)  // C2dObjectBoostBar::_Render
 // stick's icon animated.
 ELEMENT_HOOK(sub_8219ACB0)  // CB4HUDDPad2dObject::_Render
 ELEMENT_STICKY_HOOK(sub_8235DB20)  // CGt2dObjectImageRotatable::_Render (the rating's star)
+// The rest of the element renders the 2D layer has. One left unhooked only
+// batches its vertices, and they went to Direct3D when the next hooked element
+// flushed the batch, before its edge was set: a crash's (A) stayed in the
+// middle while IMPACT TIME, its text, went to the right edge.
+ELEMENT_HOOK(sub_8235DA90)  // CGt2dObjectImage::_Render
+ELEMENT_HOOK(sub_8235DA18)  // CGt2dObjectBox::_Render
+ELEMENT_HOOK(sub_8235DF90)  // CGt2dObjectParagraph::_RenderPlain
+ELEMENT_HOOK(sub_8235E100)  // CGt2dObjectParagraph::_RenderDropShadow
+ELEMENT_HOOK(sub_8235E2A8)  // CGt2dObjectParagraph::_RenderOutline
+ELEMENT_HOOK(sub_8235E678)  // CGt2dObjectVignette::_RenderHorizontal
+ELEMENT_HOOK(sub_8235E8B0)  // CGt2dObjectVignette::_RenderVertical
+ELEMENT_HOOK(sub_821907B8)  // CB4HUDTrafficAttackBar2dObject::_Render
+ELEMENT_HOOK(sub_8218DDA8)  // CB4HUDText2dObject::_RenderOutline
+ELEMENT_HOOK(sub_8218DF38)  // CB4HUDText2dObject::_RenderColourVerticesOutline
+ELEMENT_HOOK(sub_8218FD58)  // CB4HUDText2dObject::_Render2dGeometryGradientText
+ELEMENT_CENTRED_HOOK(sub_8218EAB0)  // CB4HUDText2dObject::_RenderMessage2
+ELEMENT_CENTRED_HOOK(sub_8218F3C8)  // CB4HUDText2dObject::_RenderMessage3
 // The border a crash or a takedown is framed in: black bars over the top and
 // bottom of the whole screen, not of its middle.
 ELEMENT_FILL_HOOK(sub_82187BE0)  // CB4HUDBorder2dObject::_Render
