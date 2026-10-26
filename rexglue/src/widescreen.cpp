@@ -313,6 +313,32 @@ uint8_t LayerEdge(uint32_t layer) {
 
 }  // namespace
 
+// Each event's HUD is made afresh, and its layers can land where another
+// event's were: a Crash event's bottom-left component had the layer that the
+// next race's announcements were drawn in, and kept them on the left. So the
+// edges start over with each HUD: when a component comes more than two
+// seconds after the last - each HUD's components are prepared within the
+// same second, events minutes apart. (Not from CB4HUD::Prepare: it does not
+// call the components' Prepare itself, so it may come after them and forget
+// the HUD it belongs to.)
+namespace {
+
+std::chrono::steady_clock::time_point g_last_component{};
+
+void ForgetLayerEdges() {
+  size_t forgotten;
+  {
+    std::lock_guard lock(g_layer_edges_mutex);
+    forgotten = g_layer_edges.size();
+    g_layer_edges.clear();
+  }
+  if (forgotten != 0 && std::getenv("XERENGE_HUD_LOG")) {
+    REXLOG_INFO("widescreen: a new HUD: {} layer edges forgotten", forgotten);
+  }
+}
+
+}  // namespace
+
 extern "C" void __imp__sub_821931F8(PPCContext& __restrict, uint8_t*);
 REX_HOOK_RAW(sub_821931F8) {
   const uint32_t component = ctx.r3.u32;
@@ -321,6 +347,11 @@ REX_HOOK_RAW(sub_821931F8) {
   if (layer == 0) {
     return;
   }
+  const auto now = std::chrono::steady_clock::now();
+  if (now - g_last_component > std::chrono::seconds(2)) {
+    ForgetLayerEdges();
+  }
+  g_last_component = now;
   const uint32_t align = xerenge::LoadGuestU32(base, component + 24);
   const uint8_t edge = AlignEdge(align);
   {
@@ -536,6 +567,10 @@ ELEMENT_CENTRED_HOOK(sub_8218F0A8)  // CB4HUDText2dObject::_RenderVGradientEmbos
 ELEMENT_HOOK(sub_8218F978)  // CB4HUDText2dObject::_RenderRatingText
 ELEMENT_HOOK(sub_8218FC60)  // CB4HUDText2dObject::_RenderDigitalTimer
 ELEMENT_HOOK(sub_82197A88)  // C2dObjectBoostBar::_Render
+// A button prompt (a crash's LS AFTERTOUCH). Placed by the renderer's guess
+// from its draws' extent, it went between its edge and the middle as the
+// stick's icon animated.
+ELEMENT_HOOK(sub_8219ACB0)  // CB4HUDDPad2dObject::_Render
 ELEMENT_STICKY_HOOK(sub_8235DB20)  // CGt2dObjectImageRotatable::_Render (the rating's star)
 // The border a crash or a takedown is framed in: black bars over the top and
 // bottom of the whole screen, not of its middle.
